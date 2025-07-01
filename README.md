@@ -84,7 +84,7 @@ Display colors as buffer backgrounds in GNU Emacs.
    M-x buffer-background-set-color RET #2d2d2d
    ```
 
-2. **Toggle background on/off:**
+2. **Toggle background on/off (current buffer only):**
    ```elisp
    M-x buffer-background-toggle
    ```
@@ -110,7 +110,7 @@ Display colors as buffer backgrounds in GNU Emacs.
 | Command | Description |
 |---------|-------------|
 | `buffer-background-set-color` | Set background color for current buffer |
-| `buffer-background-toggle` | Toggle background mode on/off |
+| `buffer-background-toggle` | Toggle background mode on/off (per-buffer) |
 | `buffer-background-clear` | Remove background from current buffer |
 | `buffer-background-set-opacity` | Set transparency level interactively |
 | `buffer-background-show-color-source` | Show which color would be used for current buffer |
@@ -330,12 +330,13 @@ Contributions are welcome! Please feel free to submit issues, feature requests, 
 
 ## Changelog
 
-### Version 2.1.0 (Current - function/color branch)
+### Version 2.1.0 (Current)
 - **BREAKING**: Removed all image functionality to focus on reliable color backgrounds
 - **NEW**: Uses face remapping instead of overlays for proper background integration
 - **SIMPLIFIED**: `buffer-background-color-alist` replaces `buffer-background-image-alist`
 - **IMPROVED**: Color backgrounds now work reliably and don't interfere with text
 - **ENHANCED**: Better opacity handling with proper color blending
+- **FIXED**: Toggle function now properly handles per-buffer state and respects user choices
 - Verified working implementation with comprehensive tests
 
 ### Version 2.0.0

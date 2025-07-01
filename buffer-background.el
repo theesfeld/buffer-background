@@ -128,6 +128,9 @@ Example: \\='(\"*scratch*\" \"*Messages*\" \"^\\\\*Help.*\\\\*$\")"
 (defvar-local buffer-background--current-spec nil
   "Current background specification for this buffer.")
 
+(defvar-local buffer-background--user-disabled nil
+  "Non-nil if user has explicitly disabled background for this buffer.")
+
 ;;; Utility Functions
 
 (defun buffer-background--mix-colors (fg-color bg-color alpha)
@@ -344,6 +347,7 @@ When enabled, displays a color as the background of the current buffer."
   "Check if current buffer should have background auto-enabled."
   (when (and (not buffer-background-mode)
              (not buffer-background--face-cookie)  ; Double-check no background exists
+             (not buffer-background--user-disabled)  ; Respect user's explicit disable
              (buffer-background--should-auto-enable-p (buffer-name)))
     (buffer-background-mode 1)))
 
@@ -354,6 +358,7 @@ When enabled, displays a color as the background of the current buffer."
   "Set background COLOR for the current buffer."
   (interactive "sBackground color (hex or name): ")
   (setq-local buffer-background-color color)
+  (setq-local buffer-background--user-disabled nil)  ; Clear disable flag
   (when buffer-background-mode
     (buffer-background--enable))
   (unless buffer-background-mode
@@ -364,7 +369,15 @@ When enabled, displays a color as the background of the current buffer."
 (defun buffer-background-toggle ()
   "Toggle buffer background mode in current buffer."
   (interactive)
-  (buffer-background-mode 'toggle)
+  (if buffer-background-mode
+      ;; Disabling: set user-disabled flag to prevent auto-enable
+      (progn
+        (setq-local buffer-background--user-disabled t)
+        (buffer-background-mode -1))
+    ;; Enabling: clear user-disabled flag
+    (progn
+      (setq-local buffer-background--user-disabled nil)
+      (buffer-background-mode 1)))
   (message "Buffer background %s" (if buffer-background-mode "enabled" "disabled")))
 
 ;;;###autoload
@@ -372,6 +385,7 @@ When enabled, displays a color as the background of the current buffer."
   "Clear background color from current buffer."
   (interactive)
   (setq-local buffer-background-color nil)
+  (setq-local buffer-background--user-disabled t)
   (when buffer-background-mode
     (buffer-background-mode -1))
   (message "Background color cleared"))
