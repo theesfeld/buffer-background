@@ -4,7 +4,7 @@ Display images as buffer backgrounds in GNU Emacs.
 
 ## Overview
 
-`buffer-background` is an Emacs package that allows you to display images as backgrounds for your buffers. It supports various image formats (PNG, JPEG, SVG, GIF, BMP, TIFF) and provides comprehensive customization options including transparency, scaling modes, positioning, and automatic assignment to specific buffers.
+`buffer-background` is an Emacs package that allows you to display images as backgrounds for your buffers. It supports various image formats (PNG, JPEG, SVG, GIF, BMP, TIFF) and provides comprehensive customization options including transparency, scaling modes, positioning, and automatic assignment to specific buffers based on buffer name, major mode, file extension, or custom predicates.
 
 ## Features
 
@@ -12,7 +12,11 @@ Display images as buffer backgrounds in GNU Emacs.
 - **Multiple Image Formats**: PNG, JPEG, SVG, GIF, BMP, TIFF
 - **Flexible Scaling**: Fit, fill, tile, or actual size modes
 - **Transparency Control**: Adjustable opacity levels
-- **Auto-Assignment**: Automatically apply backgrounds to specific buffers
+- **Auto-Assignment**: Automatically apply backgrounds based on:
+  - Buffer name (exact match or regexp)
+  - Major mode
+  - File extension
+  - Custom predicates (e.g., remote files, compilation buffers)
 - **Interactive Commands**: Full set of commands for easy management
 - **Performance Optimized**: Image caching and efficient overlay management
 - **Customizable**: Comprehensive customization options via `customize-group`
@@ -35,7 +39,7 @@ Display images as buffer backgrounds in GNU Emacs.
 (use-package buffer-background
   :load-path "path/to/buffer-background"
   :custom
-  ;; Set default image file
+  ;; Set default image file (fallback)
   (buffer-background-image-file "~/Pictures/background.png")
   ;; Set transparency level (0.0 = fully transparent, 1.0 = fully opaque)
   (buffer-background-opacity 0.3)
@@ -43,11 +47,30 @@ Display images as buffer backgrounds in GNU Emacs.
   (buffer-background-scale 'fit)
   ;; Enable grayscale conversion
   (buffer-background-grayscale nil)
-  ;; Set buffers for automatic background assignment
-  (buffer-background-auto-buffers '("*scratch*" "*Messages*" "^\\*Help.*\\*$"))
-  ;; Enable automatic assignment
-  (buffer-background-auto-enable t)
   :config
+  ;; Configure different backgrounds for different buffer types
+  (setq buffer-background-image-alist
+        '(;; Exact buffer name matches
+          ("*scratch*" . "~/images/scratch.png")
+          ("*Messages*" . "~/images/messages.png")
+          
+          ;; Buffer name patterns (regexp)
+          ("\\*Help.*\\*" . "~/images/help.png")
+          ("\\*Compile.*\\*" . "~/images/compile.png")
+          
+          ;; Major mode matches
+          (org-mode . "~/images/org.jpg")
+          (python-mode . "~/images/python.svg")
+          
+          ;; File extension matches
+          ((file . "txt") . "~/images/text.png")
+          ((file . "md") . "~/images/markdown.png")
+          
+          ;; Custom predicates
+          ((lambda (buf)
+             (file-remote-p default-directory))
+           . "~/images/remote.png")))
+  
   ;; Enable global mode for automatic buffer assignment
   (buffer-background-global-mode 1)
   
@@ -57,7 +80,8 @@ Display images as buffer backgrounds in GNU Emacs.
          ("C-c b c" . buffer-background-clear)
          ("C-c b o" . buffer-background-set-opacity)
          ("C-c b g" . buffer-background-toggle-grayscale)
-         ("C-c b r" . buffer-background-reload))
+         ("C-c b r" . buffer-background-reload)
+         ("C-c b i" . buffer-background-show-image-source))
   
   ;; Optional: Hooks
   :hook ((buffer-background-after-enable . (lambda () 
@@ -78,6 +102,14 @@ Display images as buffer backgrounds in GNU Emacs.
 
 3. **Set up automatic backgrounds:**
    ```elisp
+   ;; Method 1: Using buffer-background-image-alist (recommended)
+   (setq buffer-background-image-alist
+         '(("*scratch*" . "~/images/scratch.png")
+           (org-mode . "~/images/org.jpg")
+           ((file . "py") . "~/images/python.png")))
+   (buffer-background-global-mode 1)
+   
+   ;; Method 2: Using legacy auto-buffers (simple)
    (setq buffer-background-auto-buffers '("*scratch*" "*Messages*"))
    (setq buffer-background-image-file "~/Pictures/my-background.png")
    (buffer-background-global-mode 1)
@@ -98,6 +130,7 @@ Display images as buffer backgrounds in GNU Emacs.
 | `buffer-background-apply-to-buffer` | Apply background to a specific buffer |
 | `buffer-background-reload` | Reload current background image |
 | `buffer-background-clear-cache` | Clear image processing cache |
+| `buffer-background-show-image-source` | Show which image would be used for current buffer |
 
 ### Convenience Commands
 
@@ -113,8 +146,18 @@ Access customization via `M-x customize-group RET buffer-background RET` or set 
 ### Core Settings
 
 ```elisp
-;; Default image file
+;; Default/fallback image file
 (setq buffer-background-image-file "~/Pictures/background.png")
+
+;; Buffer-specific image assignments
+(setq buffer-background-image-alist
+      '(("*scratch*" . "~/images/scratch.png")
+        ("\\*Help.*\\*" . "~/images/help.png")
+        (org-mode . "~/images/org.jpg")
+        ((mode . python-mode) . "~/images/python.svg")
+        ((file . "txt") . "~/images/text.png")
+        ((lambda (buf) (file-remote-p default-directory))
+         . "~/images/remote.png")))
 
 ;; Opacity level (0.0 - 1.0)
 (setq buffer-background-opacity 0.3)
@@ -142,7 +185,36 @@ Access customization via `M-x customize-group RET buffer-background RET` or set 
 ### Auto-Assignment
 
 ```elisp
-;; Buffers for automatic background assignment
+;; Method 1: Using buffer-background-image-alist (recommended)
+;; Automatically assigns different images based on buffer criteria
+(setq buffer-background-image-alist
+      '(;; Exact buffer names
+        ("*scratch*" . "~/images/scratch.png")
+        ("*Messages*" . "~/images/messages.png")
+        
+        ;; Regexp patterns
+        ("\\*Help.*\\*" . "~/images/help.png")
+        ("\\*Compile.*\\*" . "~/images/compile.png")
+        
+        ;; Major modes
+        (org-mode . "~/images/org.jpg")
+        (python-mode . "~/images/python.svg")
+        
+        ;; Alternative syntax for modes
+        ((mode . js-mode) . "~/images/javascript.png")
+        ((mode . typescript-mode) . "~/images/typescript.png")
+        
+        ;; File extensions
+        ((file . "txt") . "~/images/text.png")
+        ((file . "md") . "~/images/markdown.png")
+        
+        ;; Custom predicates
+        ((lambda (buf) (file-remote-p default-directory))
+         . "~/images/remote.png")
+        ((lambda (buf) (bound-and-true-p compilation-mode))
+         . "~/images/build.png")))
+
+;; Method 2: Legacy auto-buffers (simple but limited)
 (setq buffer-background-auto-buffers 
       '("*scratch*" 
         "*Messages*" 
@@ -165,7 +237,16 @@ Access customization via `M-x customize-group RET buffer-background RET` or set 
 
 ## Buffer Pattern Matching
 
-The `buffer-background-auto-buffers` list accepts:
+### For `buffer-background-image-alist`:
+
+- **Exact strings**: `"*scratch*"` matches buffer name exactly
+- **Regexp patterns**: `"\\*Help.*\\*"` matches all Help buffers
+- **Major mode symbols**: `org-mode` matches all org-mode buffers
+- **Mode cons cells**: `(mode . python-mode)` alternative syntax
+- **File extension**: `(file . "txt")` matches files ending in .txt
+- **Custom predicates**: `(lambda (buf) ...)` for complex matching
+
+### For `buffer-background-auto-buffers` (legacy):
 
 - **Exact strings**: `"*scratch*"` matches exactly
 - **Regexp patterns**: `"^\\*Help.*\\*$"` matches all Help buffers
@@ -285,6 +366,15 @@ This program is free software; you can redistribute it and/or modify it under th
 Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
 
 ## Changelog
+
+### Version 1.1.0
+- Added `buffer-background-image-alist` for flexible buffer-to-image mapping
+- Support for major mode matching
+- Support for file extension matching
+- Support for custom predicate functions
+- Added `buffer-background-show-image-source` command
+- Enhanced auto-enable logic to check image-alist
+- Improved documentation and examples
 
 ### Version 1.0.0
 - Initial release
