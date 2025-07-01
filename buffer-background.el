@@ -1,47 +1,38 @@
-;;; buffer-background.el --- Display images as buffer backgrounds -*- lexical-binding: t -*-
+;;; buffer-background.el --- Display colors as buffer backgrounds -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2025 Free Software Foundation, Inc.
 
 ;; Author: TJ <tj@emacs.su>
-;; Version: 2.0.0
-;; Package-Requires: ((emacs "30.1"))
-;; Keywords: convenience, faces, multimedia
+;; Version: 2.1.0
+;; Package-Requires: ((emacs "27.1"))
+;; Keywords: convenience, faces
 ;; URL: https://github.com/theesfeld/buffer-background
 
 ;;; Commentary:
 
-;; This package provides functionality to display images or colors as buffer 
-;; backgrounds in GNU Emacs. It supports various image formats (PNG, SVG, JPEG) 
-;; and solid colors, with comprehensive customization options including transparency,
-;; scaling, positioning, rotation, and automatic assignment to specific buffers 
-;; based on buffer name, mode, file extension, or custom predicates.
+;; This package provides functionality to display colors as buffer 
+;; backgrounds in GNU Emacs. It supports solid colors with opacity and 
+;; automatic assignment to specific buffers based on buffer name, mode, 
+;; file extension, or custom predicates.
 
 ;; Usage:
 ;;   (require 'buffer-background)
 ;;   (buffer-background-mode 1)  ; Enable in current buffer
-;;   (buffer-background-select-image)  ; Choose image interactively
+;;   (buffer-background-set-color "#1a1a1a")  ; Set color
 ;;   
 ;; Automatic assignment with per-buffer settings:
-;;   (setq buffer-background-image-alist
-;;         '(;; Simple image assignment
-;;           ("*scratch*" . "~/images/scratch.png")
-;;           
-;;           ;; Color background
+;;   (setq buffer-background-color-alist
+;;         '(;; Color backgrounds
+;;           ("*scratch*" . "#2d2d2d")
 ;;           ("*Messages*" . "#1a1a1a")
-;;           
-;;           ;; Image with custom settings
-;;           (org-mode . (:image "~/images/org.jpg"
-;;                        :opacity 0.2
-;;                        :grayscale t))
 ;;           
 ;;           ;; Color with opacity
 ;;           ((mode . python-mode) . (:color "#002b36"
 ;;                                    :opacity 0.8))
 ;;           
-;;           ;; Tiled pattern with low opacity
-;;           ((file . "txt") . (:image "~/images/pattern.png"
-;;                              :scale tile
-;;                              :opacity 0.1))))
+;;           ;; Major modes with colors
+;;           (org-mode . (:color "#1e1e2e"
+;;                        :opacity 0.9))))
 ;;   (buffer-background-global-mode 1)  ; Enable auto-assignment
 
 ;; Customization:
@@ -49,28 +40,27 @@
 
 ;;; Code:
 
-(require 'image)
 (require 'cl-lib)
 
 ;;; Customization Group
 
 (defgroup buffer-background nil
-  "Display images as buffer backgrounds."
+  "Display colors as buffer backgrounds."
   :group 'convenience
   :group 'faces
   :prefix "buffer-background-")
 
 ;;; Customization Variables
 
-(defcustom buffer-background-image-file nil
-  "Default image file to use as buffer background.
-When nil, no background image is displayed."
-  :type '(choice (const :tag "No image" nil)
-                 (file :tag "Image file"))
+(defcustom buffer-background-color nil
+  "Default color to use as buffer background.
+When nil, no background color is displayed."
+  :type '(choice (const :tag "No color" nil)
+                 (string :tag "Color (hex or name)"))
   :group 'buffer-background)
 
-(defcustom buffer-background-image-alist nil
-  "Alist mapping buffer criteria to background specifications.
+(defcustom buffer-background-color-alist nil
+  "Alist mapping buffer criteria to color specifications.
 Each element should be a cons cell (CRITERIA . SPEC), where:
 
 CRITERIA can be:
@@ -83,36 +73,20 @@ CRITERIA can be:
 - A function: predicate that receives buffer and returns non-nil
 
 SPEC can be:
-- A string: path to an image file
 - A color string: hex color like \"#1a1a1a\" or color name like \"dark slate gray\"
 - A plist: detailed specification with properties:
-  :image FILE - image file path
   :color COLOR - background color (hex or name)
   :opacity FLOAT - opacity level (0.0-1.0)
-  :scale SYMBOL - scaling mode (fit, fill, tile, actual)
-  :position SYMBOL - image position (center, top, bottom, etc.)
-  :grayscale BOOLEAN - convert to grayscale
-  :blur INTEGER - blur level (0-10)
-  :margin INTEGER - margin in pixels
-  :brightness FLOAT - brightness adjustment (0.0-2.0, 1.0 = normal)
-  :contrast FLOAT - contrast adjustment (0.0-2.0, 1.0 = normal)
-  :rotation DEGREES - rotation angle (0, 90, 180, 270)
 
 Example:
-  \\='((\"*scratch*\" . \"~/images/scratch.png\")
+  \\='((\"*scratch*\" . \"#2d2d2d\")
     (\"*Messages*\" . \"#1a1a1a\")  ; Dark background color
-    (org-mode . (:image \"~/images/org.jpg\"
-                 :opacity 0.2
-                 :grayscale t))
+    (org-mode . (:color \"#1e1e2e\"
+                 :opacity 0.9))
     ((mode . python-mode) . (:color \"#002b36\"  ; Solarized dark
                              :opacity 0.8))
-    ((file . \"txt\") . (:image \"~/images/text.png\"
-                         :scale tile
-                         :opacity 0.1))
-    ((lambda (buf) (file-remote-p default-directory))
-     . (:image \"~/images/remote.png\"
-        :brightness 0.7
-        :blur 2)))"
+    ((file . \"txt\") . (:color \"#1c1c1c\"
+                        :opacity 0.7)))"
   :type '(alist :key-type (choice (string :tag "Buffer name")
                                   (regexp :tag "Buffer pattern")
                                   (symbol :tag "Major mode")
@@ -122,66 +96,16 @@ Example:
                                                 (const :tag "File extension" file))
                                         (choice string regexp symbol))
                                   (function :tag "Predicate function"))
-                :value-type (choice (file :tag "Image file")
-                                   (string :tag "Color (hex or name)")
+                :value-type (choice (string :tag "Color (hex or name)")
                                    (plist :tag "Detailed specification"
-                                          :options ((:image (file :tag "Image file"))
-                                                   (:color (string :tag "Background color"))
-                                                   (:opacity (float :tag "Opacity (0.0-1.0)"))
-                                                   (:scale (choice (const fit)
-                                                                  (const fill)
-                                                                  (const tile)
-                                                                  (const actual)))
-                                                   (:position (choice (const center)
-                                                                     (const top)
-                                                                     (const bottom)
-                                                                     (const left)
-                                                                     (const right)
-                                                                     (const top-left)
-                                                                     (const top-right)
-                                                                     (const bottom-left)
-                                                                     (const bottom-right)))
-                                                   (:grayscale (boolean :tag "Convert to grayscale"))
-                                                   (:blur (integer :tag "Blur level (0-10)"))
-                                                   (:margin (integer :tag "Margin in pixels"))
-                                                   (:brightness (float :tag "Brightness (0.0-2.0)"))
-                                                   (:contrast (float :tag "Contrast (0.0-2.0)"))
-                                                   (:rotation (choice (const 0)
-                                                                     (const 90)
-                                                                     (const 180)
-                                                                     (const 270)))))))
+                                          :options ((:color (string :tag "Background color"))
+                                                   (:opacity (float :tag "Opacity (0.0-1.0)"))))))
   :group 'buffer-background)
 
 (defcustom buffer-background-opacity 0.3
-  "Opacity level for buffer background images.
+  "Opacity level for buffer background colors.
 A float between 0.0 (fully transparent) and 1.0 (fully opaque)."
   :type '(float :tag "Opacity")
-  :group 'buffer-background)
-
-(defcustom buffer-background-scale 'fit
-  "How to scale the background image.
-- `fit': Scale image to fit buffer dimensions while preserving aspect ratio
-- `fill': Scale image to fill buffer dimensions, may crop image
-- `tile': Tile the image at original size
-- `actual': Display image at actual size"
-  :type '(choice (const :tag "Fit to buffer" fit)
-                 (const :tag "Fill buffer" fill)
-                 (const :tag "Tile image" tile)
-                 (const :tag "Actual size" actual))
-  :group 'buffer-background)
-
-(defcustom buffer-background-position 'center
-  "Position of the background image within the buffer.
-Only applies when using `actual' scaling."
-  :type '(choice (const :tag "Center" center)
-                 (const :tag "Top" top)
-                 (const :tag "Bottom" bottom)
-                 (const :tag "Left" left)
-                 (const :tag "Right" right)
-                 (const :tag "Top-left" top-left)
-                 (const :tag "Top-right" top-right)
-                 (const :tag "Bottom-left" bottom-left)
-                 (const :tag "Bottom-right" bottom-right))
   :group 'buffer-background)
 
 (defcustom buffer-background-auto-buffers nil
@@ -191,22 +115,6 @@ Example: \\='(\"*scratch*\" \"*Messages*\" \"^\\\\*Help.*\\\\*$\")"
   :type '(repeat (string :tag "Buffer name pattern"))
   :group 'buffer-background)
 
-(defcustom buffer-background-grayscale nil
-  "Convert background images to grayscale when non-nil."
-  :type 'boolean
-  :group 'buffer-background)
-
-(defcustom buffer-background-blur 0
-  "Blur level for background images.
-An integer between 0 (no blur) and 10 (maximum blur)."
-  :type '(integer :tag "Blur level")
-  :group 'buffer-background)
-
-(defcustom buffer-background-margin 0
-  "Margin around the background image in pixels."
-  :type '(integer :tag "Margin")
-  :group 'buffer-background)
-
 (defcustom buffer-background-auto-enable t
   "Enable automatic background assignment for matching buffers."
   :type 'boolean
@@ -214,20 +122,13 @@ An integer between 0 (no blur) and 10 (maximum blur)."
 
 ;;; Internal Variables
 
-(defvar-local buffer-background--overlay nil
-  "Overlay used to display the background image in the current buffer.")
+(defvar-local buffer-background--face-cookie nil
+  "Cookie for face remapping in the current buffer.")
 
 (defvar-local buffer-background--current-spec nil
   "Current background specification for this buffer.")
 
-(defvar buffer-background--image-cache (make-hash-table :test 'equal)
-  "Cache for processed background images.")
-
 ;;; Utility Functions
-
-(defun buffer-background--clear-cache ()
-  "Clear the image cache."
-  (clrhash buffer-background--image-cache))
 
 (defun buffer-background--mix-colors (fg-color bg-color alpha)
   "Mix FG-COLOR with BG-COLOR using ALPHA opacity.
@@ -301,12 +202,17 @@ CRITERIA can be a string, regexp, symbol, cons cell, or function."
 Returns a normalized plist specification or nil. BUFFER defaults to current buffer."
   (let ((buffer (or buffer (current-buffer)))
         (spec nil))
-    ;; Only check the alist - no default fallback behavior
-    (when buffer-background-image-alist
-      (cl-loop for (criteria . value) in buffer-background-image-alist
+    ;; Check the alist first
+    (when buffer-background-color-alist
+      (cl-loop for (criteria . value) in buffer-background-color-alist
                when (buffer-background--match-criteria-p criteria buffer)
                do (setq spec (buffer-background--normalize-spec value))
                and return nil))
+    
+    ;; Fallback to global default if no specific match
+    (unless spec
+      (when buffer-background-color
+        (setq spec (buffer-background--normalize-spec buffer-background-color))))
     
     ;; Apply global defaults to spec
     (when spec
@@ -314,17 +220,17 @@ Returns a normalized plist specification or nil. BUFFER defaults to current buff
 
 (defun buffer-background--normalize-spec (spec)
   "Normalize SPEC into a plist format.
-SPEC can be a string (image file or color), or a plist."
+SPEC can be a string (color), or a plist."
   (cond
    ;; Already a plist
    ((and (listp spec) (keywordp (car spec)))
     spec)
-   ;; String - determine if it's a color or file
+   ;; String - treat as color
    ((stringp spec)
     (if (or (string-match-p "^#[0-9a-fA-F]\\{6\\}$" spec)  ; Hex color
             (color-defined-p spec))                          ; Named color
         (list :color spec)
-      (list :image spec)))
+      nil))
    (t nil)))
 
 (defun buffer-background--apply-defaults (spec)
@@ -333,193 +239,41 @@ SPEC can be a string (image file or color), or a plist."
     ;; Only apply defaults if not already specified in spec
     (unless (plist-member result :opacity)
       (setq result (plist-put result :opacity buffer-background-opacity)))
-    (unless (plist-member result :scale)
-      (setq result (plist-put result :scale buffer-background-scale)))
-    (unless (plist-member result :position)
-      (setq result (plist-put result :position buffer-background-position)))
-    (unless (plist-member result :grayscale)
-      (setq result (plist-put result :grayscale buffer-background-grayscale)))
-    (unless (plist-member result :blur)
-      (setq result (plist-put result :blur buffer-background-blur)))
-    (unless (plist-member result :margin)
-      (setq result (plist-put result :margin buffer-background-margin)))
-    (unless (plist-member result :brightness)
-      (setq result (plist-put result :brightness 1.0)))
-    (unless (plist-member result :contrast)
-      (setq result (plist-put result :contrast 1.0)))
-    (unless (plist-member result :rotation)
-      (setq result (plist-put result :rotation 0)))
     result))
 
-;;; Image Processing Functions
+;;; Background Application Functions
 
-(defun buffer-background--create-color-background (color opacity)
-  "Create a color background with COLOR and OPACITY."
-  ;; Create SVG background with proper color and opacity
-  (let* ((window (get-buffer-window (current-buffer)))
-         (width (if window (window-text-width window t) 800))
-         (height (if window (window-text-height window t) 600))
-         (svg (svg-create width height))
+(defun buffer-background--apply-color-background (color opacity)
+  "Apply COLOR background with OPACITY to the current buffer using face remapping."
+  (buffer-background--remove-background)
+  
+  (let* ((default-bg (or (face-background 'default) "#ffffff"))
          (final-color (if (and opacity (< opacity 1.0))
-                         (let* ((default-bg (or (face-background 'default) "#ffffff"))
-                                (mixed-color (buffer-background--mix-colors color default-bg opacity)))
-                           mixed-color)
+                         (buffer-background--mix-colors color default-bg opacity)
                        color)))
-    (svg-rectangle svg 0 0 width height :fill final-color)
-    (svg-image svg :ascent 'center :width width :height height)))
+    ;; Use face remapping to change the default background
+    (setq buffer-background--face-cookie
+          (face-remap-add-relative 'default :background final-color))))
 
 (defun buffer-background--process-spec (spec)
-  "Process background SPEC into a display specification.
-SPEC is a plist with :image or :color and other properties."
-  (cond
-   ;; Color background - create SVG background
-   ((plist-get spec :color)
+  "Process background SPEC and apply it to the current buffer.
+SPEC is a plist with :color and other properties."
+  (when (plist-get spec :color)
     (let ((color (plist-get spec :color))
           (opacity (plist-get spec :opacity)))
-      (buffer-background--create-color-background color opacity)))
-   
-   ;; Image background
-   ((plist-get spec :image)
-    (buffer-background--process-image-with-spec spec))
-   
-   (t nil)))
+      (buffer-background--apply-color-background color opacity))))
 
-(defun buffer-background--process-image-with-spec (spec)
-  "Process image according to SPEC plist.
-Returns a processed image specification."
-  (let ((image-file (plist-get spec :image)))
-    (when (and image-file (file-exists-p image-file))
-      (let* ((cache-key (list image-file spec))
-             (cached-image (gethash cache-key buffer-background--image-cache)))
-        (if cached-image
-            cached-image
-          (let* ((base-image (create-image image-file nil nil :ascent 'center))
-                 (processed-image (buffer-background--apply-transformations-with-spec 
-                                  base-image spec)))
-            (puthash cache-key processed-image buffer-background--image-cache)
-            processed-image))))))
-
-(defun buffer-background--apply-transformations-with-spec (image spec)
-  "Apply transformations to IMAGE based on SPEC plist."
-  (let ((img-spec (copy-sequence (cdr image)))
-        (grayscale (plist-get spec :grayscale))
-        (opacity (plist-get spec :opacity))
-        (scale (plist-get spec :scale))
-        (rotation (plist-get spec :rotation))
-        (brightness (plist-get spec :brightness))
-        (contrast (plist-get spec :contrast)))
-    
-    ;; Apply grayscale conversion
-    (when grayscale
-      (setq img-spec (plist-put img-spec :conversion 'laplace)))
-    
-    ;; Apply rotation
-    (when (and rotation (not (zerop rotation)))
-      (setq img-spec (plist-put img-spec :rotation rotation)))
-    
-    ;; Apply scaling - always calculate dimensions for proper resizing
-    (let ((dimensions (buffer-background--calculate-dimensions-with-spec spec)))
-      (when dimensions
-        (setq img-spec (plist-put img-spec :width (car dimensions)))
-        (setq img-spec (plist-put img-spec :height (cdr dimensions)))))
-    
-    ;; Apply opacity by creating an alpha mask if needed
-    (when (and opacity (< opacity 1.0))
-      (setq img-spec (plist-put img-spec :mask 'heuristic))
-      ;; Create an SVG overlay with opacity if the image format supports it
-      (let* ((window (get-buffer-window (current-buffer)))
-             (width (if window (window-text-width window t) 800))
-             (height (if window (window-text-height window t) 600)))
-        (when (and width height)
-          ;; For complex opacity, we'll need to blend with SVG
-          (setq img-spec (plist-put img-spec :ascent 'center)))))
-    
-    ;; Ensure image always has proper ascent for background positioning
-    (setq img-spec (plist-put img-spec :ascent 'center))
-    
-    (cons (car image) img-spec)))
-
-(defun buffer-background--calculate-dimensions-with-spec (spec)
-  "Calculate image dimensions based on buffer size and SPEC scaling mode."
-  (let* ((window (get-buffer-window (current-buffer)))
-         (window-width (if window (window-text-width window t) 800))
-         (window-height (if window (window-text-height window t) 600))
-         (scale (plist-get spec :scale))
-         (margin (plist-get spec :margin)))
-    ;; Adjust for margins if specified
-    (when (and margin (> margin 0))
-      (setq window-width (max 100 (- window-width (* 2 margin))))
-      (setq window-height (max 100 (- window-height (* 2 margin)))))
-    
-    ;; Always return dimensions for proper background sizing
-    (pcase scale
-      ('fit (cons window-width window-height))
-      ('fill (cons window-width window-height))
-      ('tile (cons window-width window-height)) ; Full size for tiling
-      ('actual nil) ; No scaling for actual size
-      (_ (cons window-width window-height))))) ; Default to fit
-
-;;; Overlay Management
-
-(defun buffer-background--create-overlay (spec)
-  "Create or update overlay with background SPEC in the current buffer."
-  (when spec
-    ;; Remove existing overlay
-    (buffer-background--remove-overlay)
-    
-    ;; Create overlay covering entire visible buffer area
-    (let ((overlay (make-overlay (point-min) (point-max) nil nil t))
-          (inhibit-read-only t)
-          (modified (buffer-modified-p)))
-      (overlay-put overlay 'buffer-background t)
-      (overlay-put overlay 'evaporate t)
-      (overlay-put overlay 'priority -1000) ; Very low priority to stay behind text
-      
-      ;; Create background that properly fills the buffer window
-      (let* ((window (get-buffer-window (current-buffer)))
-             (lines-in-window (if window (window-text-height window) 40))
-             (background-lines (make-string (max 1 lines-in-window) ?\n))
-             (background-string (propertize background-lines 'display spec 'face '(:height 0.1))))
-        
-        ;; Use after-string to create a background that doesn't interfere with text
-        (overlay-put overlay 'after-string background-string)
-        
-        ;; Also use line-prefix for additional coverage
-        (let ((line-bg (propertize " " 'display spec 'face '(:height 0.1))))
-          (overlay-put overlay 'line-prefix line-bg)
-          (overlay-put overlay 'wrap-prefix line-bg)))
-      
-      (setq buffer-background--overlay overlay)
-      ;; Restore modified state
-      (set-buffer-modified-p modified)))))
-
-(defun buffer-background--create-tiled-string (image-string)
-  "Create a tiled version of IMAGE-STRING to fill the buffer."
-  (let* ((window (get-buffer-window (current-buffer)))
-         (window-width (and window (window-text-width window t)))
-         (window-height (and window (window-text-height window t))))
-    (if (and window-width window-height)
-        (let ((lines nil))
-          (dotimes (_ (ceiling (/ window-height 20))) ; Approximate line height
-            (let ((line ""))
-              (dotimes (_ (ceiling (/ window-width 20))) ; Approximate char width
-                (setq line (concat line image-string)))
-              (push (concat line "\n") lines)))
-          (apply #'concat (nreverse lines)))
-      image-string)))
-
-(defun buffer-background--remove-overlay ()
-  "Remove background overlay from current buffer."
-  (when (and buffer-background--overlay 
-             (overlay-buffer buffer-background--overlay))
-    (delete-overlay buffer-background--overlay)
-    (setq buffer-background--overlay nil)))
+(defun buffer-background--remove-background ()
+  "Remove background from current buffer."
+  (when buffer-background--face-cookie
+    (face-remap-remove-relative buffer-background--face-cookie)
+    (setq buffer-background--face-cookie nil)))
 
 ;;; Minor Mode Definition
 
 (define-minor-mode buffer-background-mode
-  "Toggle buffer background image display.
-When enabled, displays an image as the background of the current buffer."
+  "Toggle buffer background color display.
+When enabled, displays a color as the background of the current buffer."
   :lighter " BG"
   :group 'buffer-background
   (if buffer-background-mode
@@ -529,42 +283,16 @@ When enabled, displays an image as the background of the current buffer."
 (defun buffer-background--enable ()
   "Enable buffer background in current buffer."
   ;; Check if already enabled to prevent multiple applications
-  (unless buffer-background--overlay
+  (unless buffer-background--face-cookie
     (when-let ((spec (buffer-background--find-spec-for-buffer)))
-      (when-let ((background (buffer-background--process-spec spec)))
-        (buffer-background--create-overlay background)
-        ;; Store the spec for later updates
-        (setq-local buffer-background--current-spec spec)
-        ;; Add hooks to update on window changes
-        (add-hook 'window-size-change-functions #'buffer-background--update-overlay-hook nil t)
-        (add-hook 'window-configuration-change-hook #'buffer-background--update-overlay nil t)
-        (add-hook 'window-scroll-functions #'buffer-background--scroll-hook nil t)
-        (message "Background enabled!")))))
+      (buffer-background--process-spec spec)
+      ;; Store the spec for later updates
+      (setq-local buffer-background--current-spec spec)
+      (message "Background enabled!"))))
 
 (defun buffer-background--disable ()
   "Disable buffer background in current buffer."
-  (buffer-background--remove-overlay)
-  (remove-hook 'window-size-change-functions #'buffer-background--update-overlay-hook t)
-  (remove-hook 'window-configuration-change-hook #'buffer-background--update-overlay t)
-  (remove-hook 'window-scroll-functions #'buffer-background--scroll-hook t))
-
-(defun buffer-background--scroll-hook (window _display-start)
-  "Hook function to maintain background position during scrolling."
-  ;; Keep the overlay covering the entire buffer for static background
-  (when buffer-background--overlay
-    (move-overlay buffer-background--overlay (point-min) (point-max))))
-
-(defun buffer-background--update-overlay ()
-  "Update overlay when window configuration changes."
-  (when (and buffer-background-mode buffer-background--current-spec)
-    ;; Clear cache to force recalculation with new dimensions
-    (buffer-background--clear-cache)
-    (buffer-background--enable)))
-
-(defun buffer-background--update-overlay-hook (frame)
-  "Hook function to update overlay when window size changes."
-  (when (eq frame (selected-frame))
-    (buffer-background--update-overlay)))
+  (buffer-background--remove-background))
 
 ;;; Auto-Assignment System
 
@@ -615,31 +343,22 @@ When enabled, displays an image as the background of the current buffer."
 (defun buffer-background--check-current-buffer ()
   "Check if current buffer should have background auto-enabled."
   (when (and (not buffer-background-mode)
-             (not buffer-background--overlay)  ; Double-check no overlay exists
+             (not buffer-background--face-cookie)  ; Double-check no background exists
              (buffer-background--should-auto-enable-p (buffer-name)))
     (buffer-background-mode 1)))
 
 ;;; Interactive Commands
 
 ;;;###autoload
-(defun buffer-background-set-image (image-file)
-  "Set background IMAGE-FILE for the current buffer."
-  (interactive "fSelect background image: ")
-  (setq-local buffer-background-image-file image-file)
+(defun buffer-background-set-color (color)
+  "Set background COLOR for the current buffer."
+  (interactive "sBackground color (hex or name): ")
+  (setq-local buffer-background-color color)
   (when buffer-background-mode
     (buffer-background--enable))
   (unless buffer-background-mode
     (buffer-background-mode 1))
-  (message "Background image set: %s" (file-name-nondirectory image-file)))
-
-;;;###autoload
-(defun buffer-background-select-image ()
-  "Interactively select and set background image for current buffer."
-  (interactive)
-  (let ((image-file (read-file-name "Select background image: " nil nil t nil
-                                   (lambda (name)
-                                     (string-match-p "\\.[pP][nN][gG]\\|\\.[jJ][pP][eE]?[gG]\\|\\.[sS][vV][gG]\\|\\.[gG][iI][fF]\\|\\.[bB][mM][pP]\\|\\.[tT][iI][fF][fF]?\\'" name)))))
-    (buffer-background-set-image image-file)))
+  (message "Background color set: %s" color))
 
 ;;;###autoload
 (defun buffer-background-toggle ()
@@ -650,96 +369,33 @@ When enabled, displays an image as the background of the current buffer."
 
 ;;;###autoload
 (defun buffer-background-clear ()
-  "Clear background image from current buffer."
+  "Clear background color from current buffer."
   (interactive)
-  (setq-local buffer-background-image-file nil)
+  (setq-local buffer-background-color nil)
   (when buffer-background-mode
     (buffer-background-mode -1))
-  (message "Background image cleared"))
-
-;;;###autoload
-(defun buffer-background-apply-to-buffer (buffer-name image-file)
-  "Apply background IMAGE-FILE to buffer named BUFFER-NAME."
-  (interactive 
-   (list (read-buffer "Apply background to buffer: " nil t)
-         (read-file-name "Select background image: " nil nil t nil
-                        (lambda (name)
-                          (string-match-p "\\.[pP][nN][gG]\\|\\.[jJ][pP][eE]?[gG]\\|\\.[sS][vV][gG]\\|\\.[gG][iI][fF]\\|\\.[bB][mM][pP]\\|\\.[tT][iI][fF][fF]?\\'" name)))))
-  (let ((buffer (get-buffer buffer-name)))
-    (if buffer
-        (with-current-buffer buffer
-          (buffer-background-set-image image-file))
-      (error "Buffer %s does not exist" buffer-name))))
+  (message "Background color cleared"))
 
 ;;;###autoload
 (defun buffer-background-set-opacity (opacity)
-  "Set background image OPACITY for current buffer."
+  "Set background color OPACITY for current buffer."
   (interactive "nOpacity (0.0-1.0): ")
   (setq opacity (max 0.0 (min 1.0 opacity)))
   (setq-local buffer-background-opacity opacity)
   (when buffer-background-mode
-    (buffer-background--clear-cache)
     (buffer-background--enable))
   (message "Background opacity set to %.2f" opacity))
 
 ;;;###autoload
-(defun buffer-background-set-scale (scale)
-  "Set background image SCALE mode for current buffer."
-  (interactive (list (intern (completing-read "Scale mode: " 
-                                             '("fit" "fill" "tile" "actual") 
-                                             nil t))))
-  (setq-local buffer-background-scale scale)
-  (when buffer-background-mode
-    (buffer-background--clear-cache)
-    (buffer-background--enable))
-  (message "Background scale set to %s" scale))
-
-;;;###autoload
-(defun buffer-background-toggle-grayscale ()
-  "Toggle grayscale mode for background image in current buffer."
-  (interactive)
-  (setq-local buffer-background-grayscale (not buffer-background-grayscale))
-  (when buffer-background-mode
-    (buffer-background--clear-cache)
-    (buffer-background--enable))
-  (message "Background grayscale %s" (if buffer-background-grayscale "enabled" "disabled")))
-
-;;;###autoload
-(defun buffer-background-clear-cache ()
-  "Clear the image processing cache."
-  (interactive)
-  (buffer-background--clear-cache)
-  (message "Image cache cleared"))
-
-;;;###autoload
-(defun buffer-background-reload ()
-  "Reload the background image in current buffer."
-  (interactive)
-  (when buffer-background-mode
-    (buffer-background--clear-cache)
-    (buffer-background--enable)
-    (message "Background image reloaded")))
-
-;;;###autoload
-(defun buffer-background-show-image-source ()
-  "Show which background would be used for the current buffer."
+(defun buffer-background-show-color-source ()
+  "Show which background color would be used for the current buffer."
   (interactive)
   (let ((spec (buffer-background--find-spec-for-buffer)))
     (if spec
-        (cond
-         ((plist-get spec :color)
-          (message "Background for %s: color %s (opacity %.2f)" 
-                   (buffer-name) 
-                   (plist-get spec :color)
-                   (plist-get spec :opacity)))
-         ((plist-get spec :image)
-          (message "Background for %s: image %s (opacity %.2f, scale %s)" 
-                   (buffer-name)
-                   (plist-get spec :image)
-                   (plist-get spec :opacity)
-                   (plist-get spec :scale)))
-         (t
-          (message "Background for %s: %s" (buffer-name) spec)))
+        (message "Background for %s: color %s (opacity %.2f)" 
+                 (buffer-name) 
+                 (plist-get spec :color)
+                 (plist-get spec :opacity))
       (message "No background configured for %s" (buffer-name)))))
 
 ;;; Convenience Functions
@@ -749,14 +405,14 @@ When enabled, displays an image as the background of the current buffer."
   (interactive)
   (when-let ((scratch-buffer (get-buffer "*scratch*")))
     (with-current-buffer scratch-buffer
-      (call-interactively #'buffer-background-select-image))))
+      (call-interactively #'buffer-background-set-color))))
 
 (defun buffer-background-enable-for-messages ()
   "Enable buffer background for *Messages* buffer."
   (interactive)
   (when-let ((messages-buffer (get-buffer "*Messages*")))
     (with-current-buffer messages-buffer
-      (call-interactively #'buffer-background-select-image))))
+      (call-interactively #'buffer-background-set-color))))
 
 ;;; Documentation and Examples
 
@@ -764,102 +420,53 @@ When enabled, displays an image as the background of the current buffer."
 ;;
 ;; Basic usage:
 ;;   (require 'buffer-background)
-;;   (buffer-background-select-image)  ; Choose image for current buffer
-;;   (buffer-background-toggle)        ; Toggle background on/off
+;;   (buffer-background-set-color "#2d2d2d")  ; Set dark gray background
+;;   (buffer-background-toggle)               ; Toggle background on/off
 ;;
 ;; Set up automatic backgrounds using buffer criteria:
-;;   (setq buffer-background-image-alist
-;;         '(;; Simple image files
-;;           ("*scratch*" . "~/images/scratch.png")
-;;           
-;;           ;; Color backgrounds
+;;   (setq buffer-background-color-alist
+;;         '(;; Simple color assignments
+;;           ("*scratch*" . "#2d2d2d")
 ;;           ("*Messages*" . "#1a1a1a")
-;;           ("*Warnings*" . "dark red")
+;;           ("*Warnings*" . "#3d1a1a")
 ;;           
-;;           ;; Images with custom settings
-;;           ("\\*Help.*\\*" . (:image "~/images/help.png"
-;;                              :opacity 0.15
-;;                              :scale fit))
-;;           
-;;           ;; Major modes with colors
-;;           (org-mode . (:color "#002b36"  ; Solarized dark
+;;           ;; Major modes with colors and opacity
+;;           (org-mode . (:color "#1e1e2e"  ; Catppuccin base
 ;;                        :opacity 0.9))
 ;;           
-;;           ;; Major modes with images and effects
-;;           (python-mode . (:image "~/images/python.svg"
-;;                           :opacity 0.2
-;;                           :grayscale t
-;;                           :scale fill))
+;;           (python-mode . (:color "#002b36"  ; Solarized dark
+;;                           :opacity 0.8))
 ;;           
-;;           ;; File extensions with tiled patterns
-;;           ((file . "txt") . (:image "~/images/paper-texture.png"
-;;                              :scale tile
-;;                              :opacity 0.1))
+;;           ;; File extensions with colors
+;;           ((file . "txt") . (:color "#1c1c1c"
+;;                              :opacity 0.7))
 ;;           
-;;           ;; Custom predicates with settings
+;;           ;; Custom predicates
 ;;           ((lambda (buf)
 ;;              (file-remote-p default-directory))
-;;            . (:image "~/images/remote.png"
-;;               :opacity 0.3
-;;               :blur 2))
-;;           
-;;           ;; Dark theme for compilation buffers
-;;           ((lambda (buf) 
-;;              (bound-and-true-p compilation-mode))
-;;            . (:color "#0a0a0a"
-;;               :opacity 0.95))))
+;;            . (:color "#1a1a3d"
+;;               :opacity 0.8))))
 ;;   (buffer-background-global-mode 1)
 ;;
 ;; Use-package configuration:
 ;;   (use-package buffer-background
 ;;     :config
-;;     (setq buffer-background-image-alist
-;;           '(;; Mix of images and colors
-;;             ("*scratch*" . (:image "~/images/scratch.png"
-;;                             :opacity 0.2))
-;;             ("\\*Messages\\*" . "#1a1a1a")
-;;             (org-mode . (:color "#001f27"
-;;                          :opacity 0.85))
-;;             ((mode . python-mode) . (:image "~/images/python.svg"
-;;                                      :opacity 0.15
-;;                                      :grayscale t))
-;;             ((file . "txt") . (:image "~/images/texture.png"
-;;                                :scale tile
-;;                                :opacity 0.1))
-;;             ;; TRAMP remote files
-;;             ((lambda (buf)
-;;                (file-remote-p default-directory))
-;;              . (:color "dark blue"
-;;                 :opacity 0.9))))
-;;     ;; Global defaults (can be overridden per-buffer)
+;;     (setq buffer-background-color-alist
+;;           '(("*scratch*" . (:color "#2d2d2d" :opacity 0.8))
+;;             ("*Messages*" . "#1a1a1a")
+;;             (org-mode . (:color "#1e1e2e" :opacity 0.85))
+;;             ((mode . python-mode) . (:color "#002b36" :opacity 0.8))
+;;             ((file . "txt") . (:color "#1c1c1c" :opacity 0.7))))
+;;     ;; Global defaults
 ;;     (setq buffer-background-opacity 0.3)
-;;     (setq buffer-background-scale 'fit)
 ;;     (buffer-background-global-mode 1))
 ;;
-;; Legacy automatic backgrounds:
-;;   (setq buffer-background-auto-buffers '("*scratch*" "*Messages*"))
-;;   (setq buffer-background-image-file "~/Pictures/background.png")
-;;   (buffer-background-global-mode 1)
-;;
-;; Customize appearance:
-;;   (setq buffer-background-opacity 0.2)      ; More transparent
-;;   (setq buffer-background-scale 'tile)      ; Tile the image
-;;   (setq buffer-background-grayscale t)      ; Convert to grayscale
-;;
 ;; Interactive commands:
-;;   M-x buffer-background-select-image        ; Choose image file
+;;   M-x buffer-background-set-color           ; Set color for current buffer
 ;;   M-x buffer-background-set-opacity         ; Set transparency
-;;   M-x buffer-background-set-scale           ; Set scaling mode
-;;   M-x buffer-background-toggle-grayscale   ; Toggle grayscale
-;;   M-x buffer-background-apply-to-buffer    ; Apply to specific buffer
-;;   M-x buffer-background-clear              ; Remove background
-;;   M-x buffer-background-show-image-source  ; Show which image would be used
-;;
-;; Programmatic usage:
-;;   (with-current-buffer "*scratch*"
-;;     (buffer-background-set-image "~/Pictures/my-bg.png")
-;;     (setq-local buffer-background-opacity 0.3)
-;;     (buffer-background-mode 1))
+;;   M-x buffer-background-toggle              ; Toggle background on/off
+;;   M-x buffer-background-clear               ; Remove background
+;;   M-x buffer-background-show-color-source   ; Show which color would be used
 
 ;;; Hooks and Customization
 
@@ -878,23 +485,11 @@ When enabled, displays an image as the background of the current buffer."
   :type 'hook
   :group 'buffer-background)
 
-;; Add window resize hook to update backgrounds
-(defun buffer-background--window-size-change-hook (frame)
-  "Update background overlays when window size changes."
-  (when (frame-live-p frame)
-    (dolist (window (window-list frame))
-      (with-current-buffer (window-buffer window)
-        (when (and buffer-background-mode buffer-background--overlay)
-          (run-with-idle-timer 0.1 nil #'buffer-background--update-overlay))))))
-
 ;; Add hooks to the enable/disable functions
 (advice-add 'buffer-background--enable :before 
             (lambda () (run-hooks 'buffer-background-before-enable-hook)))
 (advice-add 'buffer-background--enable :after 
             (lambda () (run-hooks 'buffer-background-after-enable-hook)))
-
-;; Global hook for window size changes
-(add-hook 'window-size-change-functions #'buffer-background--window-size-change-hook)
 
 ;;; Footer
 
