@@ -1,35 +1,71 @@
 # buffer-background
 
-Display images as buffer backgrounds in GNU Emacs.
+Display colors as buffer backgrounds in GNU Emacs.
 
 ## Overview
 
-`buffer-background` is an Emacs package that allows you to display images or solid colors as backgrounds for your buffers. It supports various image formats (PNG, JPEG, SVG, GIF, BMP, TIFF) and color specifications, with comprehensive customization options including transparency, scaling modes, positioning, rotation, and automatic assignment to specific buffers based on buffer name, major mode, file extension, or custom predicates. Each buffer can have its own unique background settings.
+`buffer-background` is an Emacs package that allows you to display solid colors as backgrounds for your buffers. This focused implementation provides reliable color backgrounds with transparency and automatic assignment to specific buffers based on buffer name, major mode, file extension, or custom predicates. Each buffer can have its own unique background settings.
 
 ## Features
 
-- **Zero Dependencies**: Uses only built-in Emacs image and SVG support
-- **Multiple Background Types**: 
-  - Image files (PNG, JPEG, SVG, GIF, BMP, TIFF)
-  - Solid colors (hex codes or color names)
+- **Zero Dependencies**: Uses only built-in Emacs face remapping
+- **Color Backgrounds**: Solid colors (hex codes or color names) with opacity
 - **Per-Buffer Settings**: Each buffer can have unique background properties
-- **Flexible Scaling**: Fit, fill, tile, or actual size modes
 - **Visual Effects**:
   - Adjustable opacity/transparency
-  - Grayscale conversion
-  - Image rotation (0°, 90°, 180°, 270°)
-  - Blur effects (for future enhancement)
-  - Brightness and contrast adjustments (planned)
+  - Proper color blending with default theme
 - **Auto-Assignment**: Automatically apply backgrounds based on:
   - Buffer name (exact match or regexp)
   - Major mode
   - File extension
   - Custom predicates (e.g., remote files, compilation buffers)
 - **Interactive Commands**: Full set of commands for easy management
-- **Performance Optimized**: Image caching and efficient overlay management
+- **Reliable Implementation**: Uses face remapping for proper integration
 - **Customizable**: Comprehensive customization options via `customize-group`
 
 ## Installation
+
+### Using `use-package` with VC
+
+```elisp
+(use-package buffer-background
+  :vc (:url "https://github.com/theesfeld/buffer-background")
+  :ensure t
+  :custom
+  ;; Set default opacity
+  (buffer-background-opacity 0.3)
+  :config
+  ;; Configure different backgrounds for different buffer types
+  (setq buffer-background-color-alist
+        '(;; Simple color assignments
+          ("*scratch*" . "#2d2d2d")
+          ("*Messages*" . "#1a1a1a")
+          
+          ;; Color with custom opacity
+          ("*Warnings*" . (:color "#3d1a1a" :opacity 0.8))
+          
+          ;; Major modes with colors
+          (org-mode . (:color "#1e1e2e" :opacity 0.9))
+          (python-mode . (:color "#002b36" :opacity 0.8))
+          
+          ;; File extensions
+          ((file . "txt") . (:color "#1c1c1c" :opacity 0.7))
+          
+          ;; Custom predicates for special conditions
+          ((lambda (buf)
+             (file-remote-p default-directory))
+           . (:color "#1a1a3d" :opacity 0.8))))
+  
+  ;; Enable global mode for automatic buffer assignment
+  (buffer-background-global-mode 1)
+  
+  ;; Optional: Set up keybindings
+  :bind (("C-c b c" . buffer-background-set-color)
+         ("C-c b t" . buffer-background-toggle)
+         ("C-c b x" . buffer-background-clear)
+         ("C-c b o" . buffer-background-set-opacity)
+         ("C-c b s" . buffer-background-show-color-source)))
+```
 
 ### Manual Installation
 
@@ -41,80 +77,11 @@ Display images as buffer backgrounds in GNU Emacs.
 (require 'buffer-background)
 ```
 
-### Using `use-package`
-
-```elisp
-(use-package buffer-background
-  :load-path "path/to/buffer-background"
-  :custom
-  ;; Set default/fallback values (can be overridden per-buffer)
-  (buffer-background-image-file "~/Pictures/background.png")
-  (buffer-background-opacity 0.3)
-  (buffer-background-scale 'fit)
-  (buffer-background-grayscale nil)
-  :config
-  ;; Configure different backgrounds for different buffer types
-  (setq buffer-background-image-alist
-        '(;; Simple image assignment
-          ("*scratch*" . "~/images/scratch.png")
-          
-          ;; Color background
-          ("*Messages*" . "#1a1a1a")
-          
-          ;; Image with custom settings
-          ("\\*Help.*\\*" . (:image "~/images/help.png"
-                             :opacity 0.15
-                             :scale fit))
-          
-          ;; Major mode with color
-          (org-mode . (:color "#002b36"  ; Solarized dark
-                       :opacity 0.9))
-          
-          ;; Major mode with image and effects
-          (python-mode . (:image "~/images/python.svg"
-                          :opacity 0.2
-                          :grayscale t
-                          :scale fill))
-          
-          ;; File extension with tiled pattern
-          ((file . "txt") . (:image "~/images/paper-texture.png"
-                             :scale tile
-                             :opacity 0.1))
-          
-          ;; Custom predicate for remote files
-          ((lambda (buf)
-             (file-remote-p default-directory))
-           . (:color "dark blue"
-              :opacity 0.9))
-          
-          ;; Dark background for compilation
-          ((lambda (buf)
-             (derived-mode-p 'compilation-mode))
-           . (:color "#0a0a0a"
-              :opacity 0.95))))
-  
-  ;; Enable global mode for automatic buffer assignment
-  (buffer-background-global-mode 1)
-  
-  ;; Optional: Set up keybindings
-  :bind (("C-c b s" . buffer-background-select-image)
-         ("C-c b t" . buffer-background-toggle)
-         ("C-c b c" . buffer-background-clear)
-         ("C-c b o" . buffer-background-set-opacity)
-         ("C-c b g" . buffer-background-toggle-grayscale)
-         ("C-c b r" . buffer-background-reload)
-         ("C-c b i" . buffer-background-show-image-source))
-  
-  ;; Optional: Hooks
-  :hook ((buffer-background-after-enable . (lambda () 
-                                             (message "Background enabled!"))))
-```
-
 ## Quick Start
 
-1. **Enable background for current buffer:**
+1. **Set color background for current buffer:**
    ```elisp
-   M-x buffer-background-select-image
+   M-x buffer-background-set-color RET #2d2d2d
    ```
 
 2. **Toggle background on/off:**
@@ -124,20 +91,15 @@ Display images as buffer backgrounds in GNU Emacs.
 
 3. **Set up automatic backgrounds:**
    ```elisp
-   ;; Using buffer-background-image-alist (per-spec configuration)
-   (setq buffer-background-image-alist
+   ;; Using buffer-background-color-alist
+   (setq buffer-background-color-alist
          '(;; Simple assignments
-           ("*scratch*" . "~/images/scratch.png")
-           ("*Messages*" . "#1a1a1a")  ; Dark color
+           ("*scratch*" . "#2d2d2d")
+           ("*Messages*" . "#1a1a1a")
            
-           ;; With custom settings
-           (org-mode . (:image "~/images/org.jpg"
-                        :opacity 0.2
-                        :grayscale t))
-           
-           ;; Color with opacity
-           ((file . "py") . (:color "#002b36"
-                             :opacity 0.85))))
+           ;; With custom opacity
+           (org-mode . (:color "#1e1e2e" :opacity 0.9))
+           (python-mode . (:color "#002b36" :opacity 0.8))))
    (buffer-background-global-mode 1)
    ```
 
@@ -147,16 +109,11 @@ Display images as buffer backgrounds in GNU Emacs.
 
 | Command | Description |
 |---------|-------------|
-| `buffer-background-select-image` | Choose and set background image for current buffer |
+| `buffer-background-set-color` | Set background color for current buffer |
 | `buffer-background-toggle` | Toggle background mode on/off |
 | `buffer-background-clear` | Remove background from current buffer |
 | `buffer-background-set-opacity` | Set transparency level interactively |
-| `buffer-background-set-scale` | Set scaling mode interactively |
-| `buffer-background-toggle-grayscale` | Toggle grayscale conversion |
-| `buffer-background-apply-to-buffer` | Apply background to a specific buffer |
-| `buffer-background-reload` | Reload current background image |
-| `buffer-background-clear-cache` | Clear image processing cache |
-| `buffer-background-show-image-source` | Show which background would be used for current buffer |
+| `buffer-background-show-color-source` | Show which color would be used for current buffer |
 
 ### Convenience Commands
 
@@ -172,99 +129,37 @@ Access customization via `M-x customize-group RET buffer-background RET` or set 
 ### Core Settings
 
 ```elisp
-;; Buffer-specific background assignments (required for any backgrounds)
-(setq buffer-background-image-alist
-      '(;; Simple assignments
-        ("*scratch*" . "~/images/scratch.png")
-        ("*Messages*" . "#1a1a1a")  ; Color background
+;; Buffer-specific background assignments
+(setq buffer-background-color-alist
+      '(;; Simple color assignments
+        ("*scratch*" . "#2d2d2d")
+        ("*Messages*" . "#1a1a1a")
         
         ;; With detailed settings
-        ("\\*Help.*\\*" . (:image "~/images/help.png"
-                           :opacity 0.15))
-        (org-mode . (:color "#002b36"
-                     :opacity 0.9))
-        ((mode . python-mode) . (:image "~/images/python.svg"
-                                 :opacity 0.2
-                                 :grayscale t))
-        ((file . "txt") . (:image "~/images/texture.png"
-                           :scale tile
-                           :opacity 0.1))
+        ("*Warnings*" . (:color "#3d1a1a" :opacity 0.8))
+        (org-mode . (:color "#1e1e2e" :opacity 0.9))
+        ((mode . python-mode) . (:color "#002b36" :opacity 0.8))
+        ((file . "txt") . (:color "#1c1c1c" :opacity 0.7))
         ((lambda (buf) (file-remote-p default-directory))
-         . (:color "dark blue"
-            :opacity 0.9))))
+         . (:color "#1a1a3d" :opacity 0.8))))
 
-;; Opacity level (0.0 - 1.0)
+;; Default opacity level (0.0 - 1.0)
 (setq buffer-background-opacity 0.3)
-
-;; Scaling mode: 'fit, 'fill, 'tile, or 'actual
-(setq buffer-background-scale 'fit)
-
-;; Image positioning (for 'actual scaling)
-(setq buffer-background-position 'center)
-```
-
-### Visual Effects
-
-```elisp
-;; Convert to grayscale
-(setq buffer-background-grayscale t)
-
-;; Blur level (0-10, currently for future use)
-(setq buffer-background-blur 0)
-
-;; Margin around image
-(setq buffer-background-margin 0)
 ```
 
 ### Auto-Assignment
 
 ```elisp
-;; Using buffer-background-image-alist (required for any backgrounds)
-;; Automatically assigns different images/colors based on buffer criteria
-(setq buffer-background-image-alist
-      '(;; Exact buffer names
-        ("*scratch*" . "~/images/scratch.png")
-        ("*Messages*" . "#1a1a1a")  ; Color background
-        
-        ;; Regexp patterns
-        ("\\*Help.*\\*" . "~/images/help.png")
-        ("\\*Compile.*\\*" . (:color "#2d2d2d" :opacity 0.9))
-        
-        ;; Major modes
-        (org-mode . (:color "#002b36" :opacity 0.8))
-        (python-mode . (:image "~/images/python.svg" :opacity 0.2))
-        
-        ;; Alternative syntax for modes
-        ((mode . js-mode) . "~/images/javascript.png")
-        ((mode . typescript-mode) . "~/images/typescript.png")
-        
-        ;; File extensions
-        ((file . "txt") . (:image "~/images/text.png" :scale tile :opacity 0.1))
-        ((file . "md") . (:color "#f8f8f2" :opacity 0.05))
-        
-        ;; Custom predicates
-        ((lambda (buf) (file-remote-p default-directory))
-         . (:color "dark blue" :opacity 0.3))
-        ((lambda (buf) (bound-and-true-p compilation-mode))
-         . (:color "#0a0a0a" :opacity 0.95))))
-
-;; Enable auto-assignment
+;; Enable automatic background assignment
 (setq buffer-background-auto-enable t)
 
 ;; Enable global mode
 (buffer-background-global-mode 1)
 ```
 
-## Scaling Modes
-
-- **`fit`**: Scale image to fit buffer while preserving aspect ratio
-- **`fill`**: Scale image to fill entire buffer (may crop)
-- **`tile`**: Repeat image at original size to fill buffer
-- **`actual`**: Display image at actual size (use with positioning)
-
 ## Buffer Pattern Matching
 
-### For `buffer-background-image-alist`:
+### For `buffer-background-color-alist`:
 
 - **Exact strings**: `"*scratch*"` matches buffer name exactly
 - **Regexp patterns**: `"\\*Help.*\\*"` matches all Help buffers
@@ -273,60 +168,47 @@ Access customization via `M-x customize-group RET buffer-background RET` or set 
 - **File extension**: `(file . "txt")` matches files ending in .txt
 - **Custom predicates**: `(lambda (buf) ...)` for complex matching
 
-### Background Assignment Requirements
+### Color Specifications
 
-**Important**: Backgrounds are only applied when explicitly configured in `buffer-background-image-alist`. There is no default or fallback behavior.
+Colors can be specified as:
+- **Hex colors**: `"#ff0000"`, `"#2d2d2d"`
+- **Named colors**: `"red"`, `"dark blue"`
+- **With opacity**: `(:color "#ff0000" :opacity 0.5)`
 
 ## Programmatic Usage
 
 ```elisp
 ;; Apply background to specific buffer
 (with-current-buffer "*scratch*"
-  (buffer-background-set-image "~/Pictures/code-bg.png")
-  (setq-local buffer-background-opacity 0.2)
+  (buffer-background-set-color "#2d2d2d")
+  (setq-local buffer-background-opacity 0.8)
   (buffer-background-mode 1))
 
 ;; Set different backgrounds for different buffer types
 (add-hook 'org-mode-hook 
           (lambda ()
             (when (string-match "README" (buffer-name))
-              (buffer-background-set-image "~/Pictures/docs-bg.png"))))
+              (buffer-background-set-color "#1e1e2e"))))
 
 ;; Use with hooks
 (add-hook 'buffer-background-after-enable-hook
           (lambda () (message "Background applied to %s" (buffer-name))))
 ```
 
-## Performance Tips
-
-- **Image Cache**: The package caches processed images automatically
-- **Clear Cache**: Use `buffer-background-clear-cache` after changing many settings
-- **Image Size**: Smaller images load faster, especially for tiling
-- **Opacity**: Lower opacity values may perform better
-
 ## Troubleshooting
 
 ### Background Not Showing
 
-1. Verify image file exists and is readable
-2. Check Emacs image support: `M-x image-type-available-p RET png RET`
-3. Try different image formats
-4. Check buffer has content (overlay needs text to display over)
-
-### Performance Issues
-
-1. Clear image cache: `M-x buffer-background-clear-cache`
-2. Use smaller image files
-3. Reduce opacity for better performance
-4. Consider using 'actual or 'tile scaling for large images
+1. Check if buffer-background-mode is enabled: `M-x buffer-background-toggle`
+2. Verify color is valid: Try a simple hex color like `#ff0000`
+3. Check if global mode is enabled: `M-x buffer-background-global-mode`
 
 ### Auto-Assignment Not Working
 
 1. Verify `buffer-background-global-mode` is enabled
-2. Check `buffer-background-image-alist` patterns match your buffers
+2. Check `buffer-background-color-alist` patterns match your buffers
 3. Ensure `buffer-background-auto-enable` is t
-4. Use `buffer-background-show-image-source` to test pattern matching
-5. Verify your buffer names/modes match the configured patterns exactly
+4. Use `buffer-background-show-color-source` to test pattern matching
 
 ## Examples
 
@@ -334,200 +216,109 @@ Access customization via `M-x customize-group RET buffer-background RET` or set 
 
 ```elisp
 (use-package buffer-background
+  :vc (:url "https://github.com/theesfeld/buffer-background")
+  :ensure t
   :custom
-  (buffer-background-opacity 0.1)
-  (buffer-background-scale 'tile)
+  (buffer-background-opacity 0.3)
   :config
   ;; Configure which buffers get backgrounds
-  (setq buffer-background-image-alist
-        '(("*scratch*" . "~/Pictures/subtle-pattern.png")
-          ("*Messages*" . (:color "#1a1a1a" :opacity 0.8))))
+  (setq buffer-background-color-alist
+        '(("*scratch*" . "#2d2d2d")
+          ("*Messages*" . "#1a1a1a")))
   (buffer-background-global-mode 1))
 ```
 
 ### Advanced Configuration
 
-This comprehensive example demonstrates the full power of the per-buffer specification system using `buffer-background-image-alist`:
-
 ```elisp
 (use-package buffer-background
+  :vc (:url "https://github.com/theesfeld/buffer-background")
+  :ensure t
   :custom
-  ;; Set global defaults (can be overridden per-buffer)
-  (buffer-background-opacity 0.2)
-  (buffer-background-scale 'fit)
-  (buffer-background-grayscale nil)
+  ;; Set global defaults
+  (buffer-background-opacity 0.3)
   (buffer-background-auto-enable t)
   :config
-  ;; Comprehensive buffer-to-background mappings using per-spec approach
-  (setq buffer-background-image-alist
+  ;; Comprehensive buffer-to-color mappings
+  (setq buffer-background-color-alist
         '(;; === EXACT BUFFER NAME MATCHING ===
-          ;; Simple string assignment (uses global defaults)
-          ("*dashboard*" . "~/Pictures/dashboard-bg.png")
-          
-          ;; Detailed plist specifications with per-buffer overrides
-          ("*scratch*" . (:image "~/Pictures/code-bg.png"
-                          :opacity 0.15
-                          :scale fit
-                          :grayscale nil))
-          
-          ("*Messages*" . (:image "~/Pictures/log-texture.png"
-                          :opacity 0.1
-                          :scale tile
-                          :grayscale t))
-          
-          ;; Color backgrounds with transparency
-          ("*Backtrace*" . (:color "#2d1b1b"  ; Dark red tint
-                           :opacity 0.9))
+          ("*scratch*" . (:color "#2d2d2d" :opacity 0.8))
+          ("*Messages*" . "#1a1a1a")
+          ("*Warnings*" . (:color "#3d1a1a" :opacity 0.9))
           
           ;; === REGEXP PATTERN MATCHING ===
-          ;; Help system buffers
-          ("\\*Help.*\\*" . (:color "#1e1e2e"  ; Catppuccin mocha base
-                            :opacity 0.85))
-          
-          ;; All compilation-related buffers
-          ("\\*Compile.*\\*" . (:color "#2d2d2d"
-                               :opacity 0.9))
-          
-          ;; Shell and terminal buffers
-          ("\\*.*shell.*\\*" . (:image "~/Pictures/terminal-bg.png"
-                               :opacity 0.3
-                               :scale tile))
+          ("\\*Help.*\\*" . (:color "#1e1e2e" :opacity 0.85))
+          ("\\*Compile.*\\*" . (:color "#2d2d2d" :opacity 0.9))
+          ("\\*.*shell.*\\*" . (:color "#1a1a2d" :opacity 0.8))
           
           ;; === MAJOR MODE ASSIGNMENTS ===
-          ;; Org mode with subtle background
-          (org-mode . (:color "#002b36"  ; Solarized dark base03
-                      :opacity 0.8))
-          
-          ;; Programming languages with themed backgrounds
-          (python-mode . (:image "~/Pictures/python-logo-subtle.svg"
-                         :opacity 0.2
-                         :grayscale t
-                         :scale fill
-                         :position bottom-right))
-          
-          (emacs-lisp-mode . (:image "~/Pictures/emacs-spiral.png"
-                             :opacity 0.25
-                             :scale fit))
-          
-          (c-mode . (:color "#1a1a1a"
-                    :opacity 0.85))
-          
-          (rust-mode . (:image "~/Pictures/rust-gear.png"
-                       :opacity 0.15
-                       :scale actual
-                       :position center))
+          (org-mode . (:color "#002b36" :opacity 0.8))        ; Solarized dark
+          (python-mode . (:color "#1a1a2d" :opacity 0.8))     ; Blue tint
+          (emacs-lisp-mode . (:color "#2d1a2d" :opacity 0.8)) ; Purple tint
+          (c-mode . (:color "#1a1a1a" :opacity 0.85))
           
           ;; === ALTERNATIVE MODE SYNTAX ===
-          ;; Web development modes
-          ((mode . js-mode) . (:image "~/Pictures/js-bg.png"
-                              :opacity 0.18
-                              :scale fill))
-          
-          ((mode . typescript-mode) . (:image "~/Pictures/ts-bg.png"
-                                      :opacity 0.18
-                                      :scale fill))
-          
-          ((mode . css-mode) . (:color "#1a2b3c"
-                               :opacity 0.75))
-          
-          ((mode . html-mode) . (:image "~/Pictures/html-structure.svg"
-                                :opacity 0.12
-                                :grayscale t))
+          ((mode . js-mode) . (:color "#2d2d1a" :opacity 0.75))      ; Yellow tint
+          ((mode . typescript-mode) . (:color "#1a2d2d" :opacity 0.75)) ; Cyan tint
+          ((mode . css-mode) . (:color "#1a2b3c" :opacity 0.75))
           
           ;; === FILE EXTENSION MATCHING ===
-          ;; Markdown files
-          ((file . "md") . (:color "#f8f8f2"  ; Light background for readability
-                           :opacity 0.05))
-          
-          ;; Text files with paper texture
-          ((file . "txt") . (:image "~/Pictures/paper-texture.png"
-                            :scale tile
-                            :opacity 0.1))
-          
-          ;; Configuration files
-          ((file . "json") . (:color "#1a1a1a"
-                             :opacity 0.7))
-          
-          ((file . "yaml") . (:color "#2a2a1a"
-                             :opacity 0.7))
-          
-          ((file . "toml") . (:color "#1a2a1a"
-                             :opacity 0.7))
-          
-          ;; Image files - no background to avoid interference
-          ((file . "png") . nil)
-          ((file . "jpg") . nil)
-          ((file . "svg") . nil)
+          ((file . "md") . (:color "#f8f8f2" :opacity 0.05))  ; Light for readability
+          ((file . "txt") . (:color "#1c1c1c" :opacity 0.7))
+          ((file . "json") . (:color "#1a1a1a" :opacity 0.7))
+          ((file . "yaml") . (:color "#2a2a1a" :opacity 0.7))
           
           ;; === CUSTOM PREDICATE MATCHING ===
           ;; Remote files (TRAMP)
           ((lambda (buf)
-             (and (buffer-file-name buf)
-                  (file-remote-p (buffer-file-name buf))))
-           . (:color "dark blue"
-              :opacity 0.3))
+             (file-remote-p default-directory))
+           . (:color "#1a1a3d" :opacity 0.8))
           
           ;; All programming modes
           ((lambda (buf)
              (with-current-buffer buf
                (derived-mode-p 'prog-mode)))
-           . (:image "~/Pictures/code-matrix.png"
-              :opacity 0.08
-              :grayscale t
-              :scale tile))
+           . (:color "#1a1a1a" :opacity 0.6))
           
           ;; Test files
           ((lambda (buf)
              (string-match-p "\\(test\\|spec\\)" (buffer-name buf)))
-           . (:color "#0a2a0a"  ; Dark green for tests
-              :opacity 0.85))
-          
-          ;; Large files (>1MB) - lighter background for performance
-          ((lambda (buf)
-             (and (buffer-file-name buf)
-                  (> (file-attribute-size (file-attributes (buffer-file-name buf))) 1048576)))
-           . (:color "#1a1a1a"
-              :opacity 0.5))
-          
-          ;; Git commit messages
-          ((lambda (buf)
-             (string-match-p "COMMIT_EDITMSG" (buffer-name buf)))
-           . (:image "~/Pictures/git-branch-bg.png"
-              :opacity 0.15
-              :scale fit))
+           . (:color "#0a2a0a" :opacity 0.85))   ; Dark green
           
           ;; Dired buffers
           ((lambda (buf)
              (with-current-buffer buf
                (derived-mode-p 'dired-mode)))
-           . (:color "#2a2a2a"
-              :opacity 0.7))))
+           . (:color "#2a2a2a" :opacity 0.7))))
   
   ;; Enable global mode for automatic buffer assignment
   (buffer-background-global-mode 1)
   
   ;; Comprehensive keybindings
-  :bind (("C-c b s" . buffer-background-select-image)
+  :bind (("C-c b c" . buffer-background-set-color)
          ("C-c b t" . buffer-background-toggle)
-         ("C-c b c" . buffer-background-clear)
+         ("C-c b x" . buffer-background-clear)
          ("C-c b o" . buffer-background-set-opacity)
-         ("C-c b g" . buffer-background-toggle-grayscale)
-         ("C-c b r" . buffer-background-reload)
-         ("C-c b i" . buffer-background-show-image-source)
-         ("C-c b a" . buffer-background-apply-to-buffer)
-         ("C-c b C" . buffer-background-clear-cache))
+         ("C-c b s" . buffer-background-show-color-source))
   
-  ;; Optional hooks for additional customization
+  ;; Optional hooks
   :hook ((buffer-background-after-enable . (lambda () 
-                                             (message "Background applied to %s" (buffer-name))))
-         (buffer-background-after-disable . (lambda () 
-                                              (message "Background removed from %s" (buffer-name))))))
+                                             (message "Background applied to %s" (buffer-name))))))
 ```
+
+## How It Works
+
+The package uses **face remapping** (`face-remap-add-relative`) to change the background color of the `default` face in each buffer. This approach:
+
+- ✅ **Properly integrates** with Emacs' face system
+- ✅ **Works reliably** across different themes and configurations  
+- ✅ **Respects transparency** through proper color blending
+- ✅ **Doesn't interfere** with text display or scrolling
 
 ## Requirements
 
-- GNU Emacs 30.1 or later
-- Image support compiled into Emacs (standard in most distributions)
+- GNU Emacs 27.1 or later
+- Color support (standard in all modern Emacs builds)
 
 ## License
 
@@ -539,28 +330,19 @@ Contributions are welcome! Please feel free to submit issues, feature requests, 
 
 ## Changelog
 
-### Version 2.0.0
-- **BREAKING**: Enhanced `buffer-background-image-alist` to support per-buffer settings
-- Added color background support using built-in SVG functionality
-- Per-buffer settings for all properties (opacity, scale, grayscale, etc.)
-- New settings: brightness, contrast, rotation, blur (some for future enhancement)
-- Support for detailed plist specifications with custom properties
-- Backwards compatible with simple string assignments
-- Enhanced `buffer-background-show-image-source` to show color backgrounds
-- Improved caching system for complex specifications
+### Version 2.1.0 (Current - function/color branch)
+- **BREAKING**: Removed all image functionality to focus on reliable color backgrounds
+- **NEW**: Uses face remapping instead of overlays for proper background integration
+- **SIMPLIFIED**: `buffer-background-color-alist` replaces `buffer-background-image-alist`
+- **IMPROVED**: Color backgrounds now work reliably and don't interfere with text
+- **ENHANCED**: Better opacity handling with proper color blending
+- Verified working implementation with comprehensive tests
 
-### Version 1.1.0
-- Added `buffer-background-image-alist` for flexible buffer-to-image mapping
-- Support for major mode matching
-- Support for file extension matching
-- Support for custom predicate functions
-- Added `buffer-background-show-image-source` command
-- Enhanced auto-enable logic to check image-alist
-- Improved documentation and examples
+### Version 2.0.0
+- Enhanced `buffer-background-image-alist` to support per-buffer settings
+- Added color background support (now removed in 2.1.0)
+- Per-buffer settings for all properties
+- Support for detailed plist specifications
 
 ### Version 1.0.0
-- Initial release
-- Full feature implementation
-- Comprehensive customization options
-- Auto-assignment system
-- Image processing and caching
+- Initial release with image support
