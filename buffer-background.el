@@ -4,32 +4,32 @@
 
 ;; Author: TJ <tj@emacs.su>
 ;; Version: 2.1.0
-;; Package-Requires: ((emacs "27.1"))
-;; Keywords: convenience, faces
+;; Package-Requires: ((emacs "30.1")) ; only tested on emacs 30.1
+;; Keywords: buffer, background, faces
 ;; URL: https://github.com/theesfeld/buffer-background
 
 ;;; Commentary:
 
-;; This package provides functionality to display colors as buffer 
-;; backgrounds in GNU Emacs. It supports solid colors with opacity and 
-;; automatic assignment to specific buffers based on buffer name, mode, 
+;; This package provides functionality to display colors as buffer
+;; backgrounds in GNU Emacs. It supports solid colors with opacity and
+;; automatic assignment to specific buffers based on buffer name, mode,
 ;; file extension, or custom predicates.
 
 ;; Usage:
 ;;   (require 'buffer-background)
 ;;   (buffer-background-mode 1)  ; Enable in current buffer
 ;;   (buffer-background-set-color "#1a1a1a")  ; Set color
-;;   
+;;
 ;; Automatic assignment with per-buffer settings:
 ;;   (setq buffer-background-color-alist
 ;;         '(;; Color backgrounds
 ;;           ("*scratch*" . "#2d2d2d")
 ;;           ("*Messages*" . "#1a1a1a")
-;;           
+;;
 ;;           ;; Color with opacity
 ;;           ((mode . python-mode) . (:color "#002b36"
 ;;                                    :opacity 0.8))
-;;           
+;;
 ;;           ;; Major modes with colors
 ;;           (org-mode . (:color "#1e1e2e"
 ;;                        :opacity 0.9))))
@@ -172,10 +172,10 @@ CRITERIA can be a string, regexp, symbol, cons cell, or function."
     (if (string-match-p "\\[\\]\\\\^$.*+?{}()|" criteria)
         (string-match-p criteria (buffer-name buffer))
       (string-equal criteria (buffer-name buffer))))
-   
+
    ((symbolp criteria)
     (eq criteria (buffer-local-value 'major-mode buffer)))
-   
+
    ((consp criteria)
     (pcase (car criteria)
       ('mode (eq (cdr criteria) (buffer-local-value 'major-mode buffer)))
@@ -193,7 +193,7 @@ CRITERIA can be a string, regexp, symbol, cons cell, or function."
    ((functionp criteria)
     (with-current-buffer buffer
       (funcall criteria buffer)))
-   
+
    (t nil)))
 
 (defun buffer-background--find-spec-for-buffer (&optional buffer)
@@ -206,12 +206,12 @@ Returns a normalized plist specification or nil. BUFFER defaults to current buff
                when (buffer-background--match-criteria-p criteria buffer)
                do (setq spec (buffer-background--normalize-spec value))
                and return nil))
-    
+
     ;; Fallback to global default if no match
     (unless spec
       (when buffer-background-color
         (setq spec (buffer-background--normalize-spec buffer-background-color))))
-    
+
     ;; Apply global defaults to spec
     (when spec
       (buffer-background--apply-defaults spec))))
@@ -244,7 +244,7 @@ SPEC can be a string (color), or a plist."
 (defun buffer-background--apply-color-background (color opacity)
   "Apply COLOR background with OPACITY to the current buffer using face remapping."
   (buffer-background--remove-background)
-  
+
   (let* ((default-bg (or (face-background 'default) "#ffffff"))
          (final-color (if (and opacity (< opacity 1.0))
                          (buffer-background--mix-colors color default-bg opacity)
@@ -284,7 +284,7 @@ When enabled, displays a color as the background of the current buffer."
   (unless buffer-background--face-cookie
     (when-let ((spec (buffer-background--find-spec-for-buffer)))
       (buffer-background--process-spec spec)
-      ;; Store the spec for later 
+      ;; Store the spec for later
       (setq-local buffer-background--current-spec spec)
       (message "Background enabled!"))))
 
@@ -292,7 +292,7 @@ When enabled, displays a color as the background of the current buffer."
   "Disable buffer background in current buffer."
   (buffer-background--remove-background))
 
-;;; Auto assignment 
+;;; Auto assignment
 
 (defvar buffer-background--auto-assignment-timer nil
   "Timer for checking buffer auto-assignment.")
@@ -401,8 +401,8 @@ When enabled, displays a color as the background of the current buffer."
   (interactive)
   (let ((spec (buffer-background--find-spec-for-buffer)))
     (if spec
-        (message "Background for %s: color %s (opacity %.2f)" 
-                 (buffer-name) 
+        (message "Background for %s: color %s (opacity %.2f)"
+                 (buffer-name)
                  (plist-get spec :color)
                  (plist-get spec :opacity))
       (message "No background configured for %s" (buffer-name)))))
@@ -441,9 +441,9 @@ When enabled, displays a color as the background of the current buffer."
   :group 'buffer-background)
 
 ;; Add hooks to the enable/disable functions
-(advice-add 'buffer-background--enable :before 
+(advice-add 'buffer-background--enable :before
             (lambda () (run-hooks 'buffer-background-before-enable-hook)))
-(advice-add 'buffer-background--enable :after 
+(advice-add 'buffer-background--enable :after
             (lambda () (run-hooks 'buffer-background-after-enable-hook)))
 
 ;;; Footer
