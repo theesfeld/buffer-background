@@ -4,14 +4,14 @@
 
 ;; Author: TJ <tj@emacs.su>
 ;; Version: 2.1.0
-;; Package-Requires: ((emacs "30.1")) ; only tested on emacs 30.1
+;; Package-Requires: ((emacs "30.1"))
 ;; Keywords: buffer, background, faces
 ;; URL: https://github.com/theesfeld/buffer-background
 
 ;;; Commentary:
 
 ;; This package provides functionality to display colors as buffer
-;; backgrounds in GNU Emacs. It supports solid colors with opacity and
+;; backgrounds in GNU Emacs.  It supports solid colors with opacity and
 ;; automatic assignment to specific buffers based on buffer name, mode,
 ;; file extension, or custom predicates.
 
@@ -73,7 +73,8 @@ CRITERIA can be:
 - A function: predicate that receives buffer and returns non-nil
 
 SPEC can be:
-- A color string: hex color like \"#1a1a1a\" or color name like \"dark slate gray\"
+- A color string: hex color like \"#1a1a1a\" or color name
+  like \"dark slate gray\"
 - A plist: detailed specification with properties:
   :color COLOR - background color (hex or name)
   :opacity FLOAT - opacity level (0.0-1.0)
@@ -83,7 +84,7 @@ Example:
     (\"*Messages*\" . \"#1a1a1a\")  ; Dark background color
     (org-mode . (:color \"#1e1e2e\"
                  :opacity 0.9))
-    ((mode . python-mode) . (:color \"#002b36\"  ; Solarized dark
+    ((mode . \"python-mode\") . (:color \"#002b36\"  ; Solarized dark
                              :opacity 0.8))
     ((file . \"txt\") . (:color \"#1c1c1c\"
                         :opacity 0.7)))"
@@ -97,9 +98,9 @@ Example:
                                         (choice string regexp symbol))
                                   (function :tag "Predicate function"))
                 :value-type (choice (string :tag "Color (hex or name)")
-                                   (plist :tag "Detailed specification"
-                                          :options ((:color (string :tag "Background color"))
-                                                   (:opacity (float :tag "Opacity (0.0-1.0)"))))))
+                                    (plist :tag "Detailed specification"
+                                           :options ((:color (string :tag "Background color"))
+                                                     (:opacity (float :tag "Opacity (0.0-1.0)"))))))
   :group 'buffer-background)
 
 (defcustom buffer-background-opacity 0.3
@@ -198,7 +199,8 @@ CRITERIA can be a string, regexp, symbol, cons cell, or function."
 
 (defun buffer-background--find-spec-for-buffer (&optional buffer)
   "Find the appropriate background specification for BUFFER.
-Returns a normalized plist specification or nil. BUFFER defaults to current buffer."
+Returns a normalized plist specification or nil.
+BUFFER defaults to current buffer."
   (let ((buffer (or buffer (current-buffer)))
         (spec nil)
     (when buffer-background-color-alist
@@ -300,6 +302,7 @@ When enabled, displays a color as the background of the current buffer."
 (define-minor-mode buffer-background-global-mode
   "Global mode for automatic buffer background assignment."
   :global t
+  :require 'buffer-background
   :group 'buffer-background
   (if buffer-background-global-mode
       (buffer-background--enable-global)
@@ -426,7 +429,7 @@ When enabled, displays a color as the background of the current buffer."
 ;;; Hooks and Customization
 
 (defcustom buffer-background-mode-hook nil
-  "Hook run when buffer-background-mode is enabled or disabled."
+  "Hook run when \"buffer-background-mode\" is enabled or disabled."
   :type 'hook
   :group 'buffer-background)
 
