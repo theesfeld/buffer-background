@@ -42,7 +42,7 @@
 
 (require 'cl-lib)
 
-;;; Customization Group
+;;; Customizations
 
 (defgroup buffer-background nil
   "Display colors as buffer backgrounds."
@@ -50,7 +50,7 @@
   :group 'faces
   :prefix "buffer-background-")
 
-;;; Customization Variables
+;;; Customizable Variables
 
 (defcustom buffer-background-color nil
   "Default color to use as buffer background.
@@ -120,7 +120,7 @@ Example: \\='(\"*scratch*\" \"*Messages*\" \"^\\\\*Help.*\\\\*$\")"
   :type 'boolean
   :group 'buffer-background)
 
-;;; Internal Variables
+;;; Variables
 
 (defvar-local buffer-background--face-cookie nil
   "Cookie for face remapping in the current buffer.")
@@ -173,11 +173,9 @@ CRITERIA can be a string, regexp, symbol, cons cell, or function."
         (string-match-p criteria (buffer-name buffer))
       (string-equal criteria (buffer-name buffer))))
    
-   ;; Symbol: major mode match
    ((symbolp criteria)
     (eq criteria (buffer-local-value 'major-mode buffer)))
    
-   ;; Cons cell: specific match type
    ((consp criteria)
     (pcase (car criteria)
       ('mode (eq (cdr criteria) (buffer-local-value 'major-mode buffer)))
@@ -192,8 +190,6 @@ CRITERIA can be a string, regexp, symbol, cons cell, or function."
                     (string-equal (file-name-extension file)
                                   (cdr criteria)))))
       (_ nil)))
-   
-   ;; Function: predicate
    ((functionp criteria)
     (with-current-buffer buffer
       (funcall criteria buffer)))
@@ -204,15 +200,14 @@ CRITERIA can be a string, regexp, symbol, cons cell, or function."
   "Find the appropriate background specification for BUFFER.
 Returns a normalized plist specification or nil. BUFFER defaults to current buffer."
   (let ((buffer (or buffer (current-buffer)))
-        (spec nil))
-    ;; Check the alist first
+        (spec nil)
     (when buffer-background-color-alist
       (cl-loop for (criteria . value) in buffer-background-color-alist
                when (buffer-background--match-criteria-p criteria buffer)
                do (setq spec (buffer-background--normalize-spec value))
                and return nil))
     
-    ;; Fallback to global default if no specific match
+    ;; Fallback to global default if no match
     (unless spec
       (when buffer-background-color
         (setq spec (buffer-background--normalize-spec buffer-background-color))))
@@ -225,10 +220,10 @@ Returns a normalized plist specification or nil. BUFFER defaults to current buff
   "Normalize SPEC into a plist format.
 SPEC can be a string (color), or a plist."
   (cond
-   ;; Already a plist
+   ;; plist
    ((and (listp spec) (keywordp (car spec)))
     spec)
-   ;; String - treat as color
+   ;; string colors
    ((stringp spec)
     (if (or (string-match-p "^#[0-9a-fA-F]\\{6\\}$" spec)  ; Hex color
             (color-defined-p spec))                          ; Named color
@@ -244,7 +239,7 @@ SPEC can be a string (color), or a plist."
       (setq result (plist-put result :opacity buffer-background-opacity)))
     result))
 
-;;; Background Application Functions
+;;; Actually applying the background
 
 (defun buffer-background--apply-color-background (color opacity)
   "Apply COLOR background with OPACITY to the current buffer using face remapping."
@@ -285,11 +280,11 @@ When enabled, displays a color as the background of the current buffer."
 
 (defun buffer-background--enable ()
   "Enable buffer background in current buffer."
-  ;; Check if already enabled to prevent multiple applications
+  ;; Check if already enabled to prevent looping
   (unless buffer-background--face-cookie
     (when-let ((spec (buffer-background--find-spec-for-buffer)))
       (buffer-background--process-spec spec)
-      ;; Store the spec for later updates
+      ;; Store the spec for later 
       (setq-local buffer-background--current-spec spec)
       (message "Background enabled!"))))
 
@@ -297,7 +292,7 @@ When enabled, displays a color as the background of the current buffer."
   "Disable buffer background in current buffer."
   (buffer-background--remove-background))
 
-;;; Auto-Assignment System
+;;; Auto assignment 
 
 (defvar buffer-background--auto-assignment-timer nil
   "Timer for checking buffer auto-assignment.")
@@ -351,7 +346,7 @@ When enabled, displays a color as the background of the current buffer."
              (buffer-background--should-auto-enable-p (buffer-name)))
     (buffer-background-mode 1)))
 
-;;; Interactive Commands
+;;; Autoload user commands
 
 ;;;###autoload
 (defun buffer-background-set-color (color)
@@ -427,60 +422,6 @@ When enabled, displays a color as the background of the current buffer."
   (when-let ((messages-buffer (get-buffer "*Messages*")))
     (with-current-buffer messages-buffer
       (call-interactively #'buffer-background-set-color))))
-
-;;; Documentation and Examples
-
-;; Usage Examples:
-;;
-;; Basic usage:
-;;   (require 'buffer-background)
-;;   (buffer-background-set-color "#2d2d2d")  ; Set dark gray background
-;;   (buffer-background-toggle)               ; Toggle background on/off
-;;
-;; Set up automatic backgrounds using buffer criteria:
-;;   (setq buffer-background-color-alist
-;;         '(;; Simple color assignments
-;;           ("*scratch*" . "#2d2d2d")
-;;           ("*Messages*" . "#1a1a1a")
-;;           ("*Warnings*" . "#3d1a1a")
-;;           
-;;           ;; Major modes with colors and opacity
-;;           (org-mode . (:color "#1e1e2e"  ; Catppuccin base
-;;                        :opacity 0.9))
-;;           
-;;           (python-mode . (:color "#002b36"  ; Solarized dark
-;;                           :opacity 0.8))
-;;           
-;;           ;; File extensions with colors
-;;           ((file . "txt") . (:color "#1c1c1c"
-;;                              :opacity 0.7))
-;;           
-;;           ;; Custom predicates
-;;           ((lambda (buf)
-;;              (file-remote-p default-directory))
-;;            . (:color "#1a1a3d"
-;;               :opacity 0.8))))
-;;   (buffer-background-global-mode 1)
-;;
-;; Use-package configuration:
-;;   (use-package buffer-background
-;;     :config
-;;     (setq buffer-background-color-alist
-;;           '(("*scratch*" . (:color "#2d2d2d" :opacity 0.8))
-;;             ("*Messages*" . "#1a1a1a")
-;;             (org-mode . (:color "#1e1e2e" :opacity 0.85))
-;;             ((mode . python-mode) . (:color "#002b36" :opacity 0.8))
-;;             ((file . "txt") . (:color "#1c1c1c" :opacity 0.7))))
-;;     ;; Global defaults
-;;     (setq buffer-background-opacity 0.3)
-;;     (buffer-background-global-mode 1))
-;;
-;; Interactive commands:
-;;   M-x buffer-background-set-color           ; Set color for current buffer
-;;   M-x buffer-background-set-opacity         ; Set transparency
-;;   M-x buffer-background-toggle              ; Toggle background on/off
-;;   M-x buffer-background-clear               ; Remove background
-;;   M-x buffer-background-show-color-source   ; Show which color would be used
 
 ;;; Hooks and Customization
 
