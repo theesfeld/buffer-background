@@ -229,6 +229,18 @@ An integer between 0 (no blur) and 10 (maximum blur)."
   "Clear the image cache."
   (clrhash buffer-background--image-cache))
 
+(defun buffer-background--mix-colors (fg-color bg-color alpha)
+  "Mix FG-COLOR with BG-COLOR using ALPHA opacity.
+ALPHA should be between 0.0 and 1.0."
+  (let ((fg-rgb (color-name-to-rgb fg-color))
+        (bg-rgb (color-name-to-rgb bg-color)))
+    (if (and fg-rgb bg-rgb)
+        (apply #'format "#%02x%02x%02x"
+               (cl-mapcar (lambda (fg bg)
+                           (round (* 255 (+ (* alpha fg) (* (- 1 alpha) bg)))))
+                         fg-rgb bg-rgb))
+      fg-color)))
+
 (defun buffer-background--buffer-matches-pattern-p (buffer-name pattern)
   "Check if BUFFER-NAME matches PATTERN.
 PATTERN can be a string (exact match) or regexp."
@@ -352,30 +364,26 @@ SPEC can be a string (image file or color), or a plist."
 ;;; Image Processing Functions
 
 (defun buffer-background--create-color-background (color opacity)
-  "Create a color background with COLOR and OPACITY.
-Uses Emacs built-in SVG support to create a colored rectangle."
-  (require 'svg)
-  (let* ((window (get-buffer-window (current-buffer)))
-         (width (or (and window (window-text-width window t)) 80))
-         (height (or (and window (window-text-height window t)) 40))
-         (svg (svg-create width height)))
-    ;; Convert color to RGB values
-    (let ((rgb (color-name-to-rgb color)))
-      (when rgb
-        (svg-rectangle svg 0 0 width height
-                       :fill color
-                       :fill-opacity opacity)))
-    (svg-image svg)))
+  "Create a color background with COLOR and OPACITY."
+  ;; Use face properties for color backgrounds instead of SVG
+  ;; This ensures better compatibility with themes
+  `(face (:background ,color)))
 
 (defun buffer-background--process-spec (spec)
   "Process background SPEC into a display specification.
 SPEC is a plist with :image or :color and other properties."
   (cond
-   ;; Color background
+   ;; Color background - return face spec
    ((plist-get spec :color)
-    (buffer-background--create-color-background
-     (plist-get spec :color)
-     (plist-get spec :opacity)))
+    (let ((color (plist-get spec :color))
+          (opacity (plist-get spec :opacity)))
+      ;; For color backgrounds, we use face properties
+      ;; Opacity is applied by mixing with default background
+      (if (< opacity 1.0)
+          (let* ((default-bg (face-background 'default))
+                 (mixed-color (buffer-background--mix-colors color default-bg opacity)))
+            `(face (:background ,mixed-color)))
+        `(face (:background ,color)))))
    
    ;; Image background
    ((plist-get spec :image)
@@ -456,26 +464,45 @@ Returns a processed image specification."
 
 ;;; Overlay Management
 
-(defun buffer-background--create-overlay (image)
-  "Create or update overlay with IMAGE in the current buffer."
-  (when image
+(defun buffer-background--create-overlay (spec)
+  "Create or update overlay with background SPEC in the current buffer."
+  (when spec
     ;; Remove existing overlay
     (buffer-background--remove-overlay)
     
-    ;; Create new overlay
-    (let ((overlay (make-overlay (point-min) (point-max) nil nil t)))
-      (overlay-put overlay 'buffer-background t)
-      (overlay-put overlay 'evaporate t)
-      (overlay-put overlay 'priority -100) ; Low priority to stay in background
-      
-      ;; Create the image display string
-      (let* ((image-string (propertize " " 'display image))
-             (background-string (if (eq buffer-background-scale 'tile)
-                                   (buffer-background--create-tiled-string image-string)
-                                 image-string)))
-        (overlay-put overlay 'before-string background-string))
-      
-      (setq buffer-background--overlay overlay))))
+    ;; Handle color backgrounds differently
+    (cond
+     ;; Color background - use face property
+     ((and (listp spec) (eq (car spec) 'face))
+      (let ((overlay (make-overlay (point-min) (point-max) nil nil t))
+            (face-spec (cadr spec)))
+        (overlay-put overlay 'buffer-background t)
+        (overlay-put overlay 'evaporate t)
+        (overlay-put overlay 'priority -1000) ; Very low priority
+        (overlay-put overlay 'face face-spec)
+        (setq buffer-background--overlay overlay)))
+     
+     ;; Image background - use line-prefix and wrap-prefix
+     (t
+      ;; For images, we'll use a different approach: set the background as a 
+      ;; text property on spaces throughout the buffer
+      (let ((inhibit-read-only t)
+            (modified (buffer-modified-p)))
+        ;; Create an overlay that covers the whole buffer
+        (let ((overlay (make-overlay (point-min) (point-max) nil nil t)))
+          (overlay-put overlay 'buffer-background t)
+          (overlay-put overlay 'evaporate t)
+          (overlay-put overlay 'priority -1000)
+          
+          ;; Set line-prefix for static background
+          (let* ((img-string (propertize " " 'display spec))
+                 (prefix-width (car (window-text-pixel-size nil (point-min) (point-min)))))
+            (overlay-put overlay 'line-prefix img-string)
+            (overlay-put overlay 'wrap-prefix img-string))
+          
+          (setq buffer-background--overlay overlay))
+        ;; Restore modified state
+        (set-buffer-modified-p modified))))))
 
 (defun buffer-background--create-tiled-string (image-string)
   "Create a tiled version of IMAGE-STRING to fill the buffer."
@@ -512,20 +539,31 @@ When enabled, displays an image as the background of the current buffer."
 
 (defun buffer-background--enable ()
   "Enable buffer background in current buffer."
-  (when-let ((spec (buffer-background--find-spec-for-buffer)))
-    (when-let ((background (buffer-background--process-spec spec)))
-      (buffer-background--create-overlay background)
-      ;; Store the spec for later updates
-      (setq-local buffer-background--current-spec spec)
-      ;; Add hooks to update on window changes
-      (add-hook 'window-size-change-functions #'buffer-background--update-overlay-hook nil t)
-      (add-hook 'window-configuration-change-hook #'buffer-background--update-overlay nil t))))
+  ;; Check if already enabled to prevent multiple applications
+  (unless buffer-background--overlay
+    (when-let ((spec (buffer-background--find-spec-for-buffer)))
+      (when-let ((background (buffer-background--process-spec spec)))
+        (buffer-background--create-overlay background)
+        ;; Store the spec for later updates
+        (setq-local buffer-background--current-spec spec)
+        ;; Add hooks to update on window changes
+        (add-hook 'window-size-change-functions #'buffer-background--update-overlay-hook nil t)
+        (add-hook 'window-configuration-change-hook #'buffer-background--update-overlay nil t)
+        (add-hook 'window-scroll-functions #'buffer-background--scroll-hook nil t)
+        (message "Background enabled!")))))
 
 (defun buffer-background--disable ()
   "Disable buffer background in current buffer."
   (buffer-background--remove-overlay)
   (remove-hook 'window-size-change-functions #'buffer-background--update-overlay-hook t)
-  (remove-hook 'window-configuration-change-hook #'buffer-background--update-overlay t))
+  (remove-hook 'window-configuration-change-hook #'buffer-background--update-overlay t)
+  (remove-hook 'window-scroll-functions #'buffer-background--scroll-hook t))
+
+(defun buffer-background--scroll-hook (window _display-start)
+  "Hook function to maintain background position during scrolling."
+  ;; Keep the overlay at the beginning of buffer to maintain static position
+  (when buffer-background--overlay
+    (move-overlay buffer-background--overlay (point-min) (point-min))))
 
 (defun buffer-background--update-overlay ()
   "Update overlay when window configuration changes."
@@ -586,6 +624,7 @@ When enabled, displays an image as the background of the current buffer."
 (defun buffer-background--check-current-buffer ()
   "Check if current buffer should have background auto-enabled."
   (when (and (not buffer-background-mode)
+             (not buffer-background--overlay)  ; Double-check no overlay exists
              (buffer-background--should-auto-enable-p (buffer-name)))
     (buffer-background-mode 1)))
 
