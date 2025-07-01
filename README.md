@@ -4,14 +4,22 @@ Display images as buffer backgrounds in GNU Emacs.
 
 ## Overview
 
-`buffer-background` is an Emacs package that allows you to display images as backgrounds for your buffers. It supports various image formats (PNG, JPEG, SVG, GIF, BMP, TIFF) and provides comprehensive customization options including transparency, scaling modes, positioning, and automatic assignment to specific buffers based on buffer name, major mode, file extension, or custom predicates.
+`buffer-background` is an Emacs package that allows you to display images or solid colors as backgrounds for your buffers. It supports various image formats (PNG, JPEG, SVG, GIF, BMP, TIFF) and color specifications, with comprehensive customization options including transparency, scaling modes, positioning, rotation, and automatic assignment to specific buffers based on buffer name, major mode, file extension, or custom predicates. Each buffer can have its own unique background settings.
 
 ## Features
 
-- **Zero Dependencies**: Uses only built-in Emacs image support
-- **Multiple Image Formats**: PNG, JPEG, SVG, GIF, BMP, TIFF
+- **Zero Dependencies**: Uses only built-in Emacs image and SVG support
+- **Multiple Background Types**: 
+  - Image files (PNG, JPEG, SVG, GIF, BMP, TIFF)
+  - Solid colors (hex codes or color names)
+- **Per-Buffer Settings**: Each buffer can have unique background properties
 - **Flexible Scaling**: Fit, fill, tile, or actual size modes
-- **Transparency Control**: Adjustable opacity levels
+- **Visual Effects**:
+  - Adjustable opacity/transparency
+  - Grayscale conversion
+  - Image rotation (0°, 90°, 180°, 270°)
+  - Blur effects (for future enhancement)
+  - Brightness and contrast adjustments (planned)
 - **Auto-Assignment**: Automatically apply backgrounds based on:
   - Buffer name (exact match or regexp)
   - Major mode
@@ -39,37 +47,51 @@ Display images as buffer backgrounds in GNU Emacs.
 (use-package buffer-background
   :load-path "path/to/buffer-background"
   :custom
-  ;; Set default image file (fallback)
+  ;; Set default/fallback values (can be overridden per-buffer)
   (buffer-background-image-file "~/Pictures/background.png")
-  ;; Set transparency level (0.0 = fully transparent, 1.0 = fully opaque)
   (buffer-background-opacity 0.3)
-  ;; Set scaling mode (fit, fill, tile, actual)
   (buffer-background-scale 'fit)
-  ;; Enable grayscale conversion
   (buffer-background-grayscale nil)
   :config
   ;; Configure different backgrounds for different buffer types
   (setq buffer-background-image-alist
-        '(;; Exact buffer name matches
+        '(;; Simple image assignment
           ("*scratch*" . "~/images/scratch.png")
-          ("*Messages*" . "~/images/messages.png")
           
-          ;; Buffer name patterns (regexp)
-          ("\\*Help.*\\*" . "~/images/help.png")
-          ("\\*Compile.*\\*" . "~/images/compile.png")
+          ;; Color background
+          ("*Messages*" . "#1a1a1a")
           
-          ;; Major mode matches
-          (org-mode . "~/images/org.jpg")
-          (python-mode . "~/images/python.svg")
+          ;; Image with custom settings
+          ("\\*Help.*\\*" . (:image "~/images/help.png"
+                             :opacity 0.15
+                             :scale fit))
           
-          ;; File extension matches
-          ((file . "txt") . "~/images/text.png")
-          ((file . "md") . "~/images/markdown.png")
+          ;; Major mode with color
+          (org-mode . (:color "#002b36"  ; Solarized dark
+                       :opacity 0.9))
           
-          ;; Custom predicates
+          ;; Major mode with image and effects
+          (python-mode . (:image "~/images/python.svg"
+                          :opacity 0.2
+                          :grayscale t
+                          :scale fill))
+          
+          ;; File extension with tiled pattern
+          ((file . "txt") . (:image "~/images/paper-texture.png"
+                             :scale tile
+                             :opacity 0.1))
+          
+          ;; Custom predicate for remote files
           ((lambda (buf)
              (file-remote-p default-directory))
-           . "~/images/remote.png")))
+           . (:color "dark blue"
+              :opacity 0.9))
+          
+          ;; Dark background for compilation
+          ((lambda (buf)
+             (derived-mode-p 'compilation-mode))
+           . (:color "#0a0a0a"
+              :opacity 0.95))))
   
   ;; Enable global mode for automatic buffer assignment
   (buffer-background-global-mode 1)
@@ -104,9 +126,18 @@ Display images as buffer backgrounds in GNU Emacs.
    ```elisp
    ;; Method 1: Using buffer-background-image-alist (recommended)
    (setq buffer-background-image-alist
-         '(("*scratch*" . "~/images/scratch.png")
-           (org-mode . "~/images/org.jpg")
-           ((file . "py") . "~/images/python.png")))
+         '(;; Simple assignments
+           ("*scratch*" . "~/images/scratch.png")
+           ("*Messages*" . "#1a1a1a")  ; Dark color
+           
+           ;; With custom settings
+           (org-mode . (:image "~/images/org.jpg"
+                        :opacity 0.2
+                        :grayscale t))
+           
+           ;; Color with opacity
+           ((file . "py") . (:color "#002b36"
+                             :opacity 0.85))))
    (buffer-background-global-mode 1)
    
    ;; Method 2: Using legacy auto-buffers (simple)
@@ -130,7 +161,7 @@ Display images as buffer backgrounds in GNU Emacs.
 | `buffer-background-apply-to-buffer` | Apply background to a specific buffer |
 | `buffer-background-reload` | Reload current background image |
 | `buffer-background-clear-cache` | Clear image processing cache |
-| `buffer-background-show-image-source` | Show which image would be used for current buffer |
+| `buffer-background-show-image-source` | Show which background would be used for current buffer |
 
 ### Convenience Commands
 
@@ -149,15 +180,26 @@ Access customization via `M-x customize-group RET buffer-background RET` or set 
 ;; Default/fallback image file
 (setq buffer-background-image-file "~/Pictures/background.png")
 
-;; Buffer-specific image assignments
+;; Buffer-specific background assignments
 (setq buffer-background-image-alist
-      '(("*scratch*" . "~/images/scratch.png")
-        ("\\*Help.*\\*" . "~/images/help.png")
-        (org-mode . "~/images/org.jpg")
-        ((mode . python-mode) . "~/images/python.svg")
-        ((file . "txt") . "~/images/text.png")
+      '(;; Simple assignments
+        ("*scratch*" . "~/images/scratch.png")
+        ("*Messages*" . "#1a1a1a")  ; Color background
+        
+        ;; With detailed settings
+        ("\\*Help.*\\*" . (:image "~/images/help.png"
+                           :opacity 0.15))
+        (org-mode . (:color "#002b36"
+                     :opacity 0.9))
+        ((mode . python-mode) . (:image "~/images/python.svg"
+                                 :opacity 0.2
+                                 :grayscale t))
+        ((file . "txt") . (:image "~/images/texture.png"
+                           :scale tile
+                           :opacity 0.1))
         ((lambda (buf) (file-remote-p default-directory))
-         . "~/images/remote.png")))
+         . (:color "dark blue"
+            :opacity 0.9))))
 
 ;; Opacity level (0.0 - 1.0)
 (setq buffer-background-opacity 0.3)
@@ -366,6 +408,16 @@ This program is free software; you can redistribute it and/or modify it under th
 Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
 
 ## Changelog
+
+### Version 2.0.0
+- **BREAKING**: Enhanced `buffer-background-image-alist` to support per-buffer settings
+- Added color background support using built-in SVG functionality
+- Per-buffer settings for all properties (opacity, scale, grayscale, etc.)
+- New settings: brightness, contrast, rotation, blur (some for future enhancement)
+- Support for detailed plist specifications with custom properties
+- Backwards compatible with simple string assignments
+- Enhanced `buffer-background-show-image-source` to show color backgrounds
+- Improved caching system for complex specifications
 
 ### Version 1.1.0
 - Added `buffer-background-image-alist` for flexible buffer-to-image mapping
