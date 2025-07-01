@@ -301,22 +301,12 @@ CRITERIA can be a string, regexp, symbol, cons cell, or function."
 Returns a normalized plist specification or nil. BUFFER defaults to current buffer."
   (let ((buffer (or buffer (current-buffer)))
         (spec nil))
-    ;; First check buffer-local setting
-    (when-let ((local-file (buffer-local-value 'buffer-background-image-file buffer)))
-      (setq spec (list :image local-file)))
-    
-    ;; Then check the alist
-    (unless spec
-      (when buffer-background-image-alist
-        (cl-loop for (criteria . value) in buffer-background-image-alist
-                 when (buffer-background--match-criteria-p criteria buffer)
-                 do (setq spec (buffer-background--normalize-spec value))
-                 and return nil)))
-    
-    ;; Finally fall back to default
-    (unless spec
-      (when buffer-background-image-file
-        (setq spec (list :image buffer-background-image-file))))
+    ;; Only check the alist - no default fallback behavior
+    (when buffer-background-image-alist
+      (cl-loop for (criteria . value) in buffer-background-image-alist
+               when (buffer-background--match-criteria-p criteria buffer)
+               do (setq spec (buffer-background--normalize-spec value))
+               and return nil))
     
     ;; Apply global defaults to spec
     (when spec
@@ -365,25 +355,28 @@ SPEC can be a string (image file or color), or a plist."
 
 (defun buffer-background--create-color-background (color opacity)
   "Create a color background with COLOR and OPACITY."
-  ;; Use face properties for color backgrounds instead of SVG
-  ;; This ensures better compatibility with themes
-  `(face (:background ,color)))
+  ;; Create SVG background with proper color and opacity
+  (let* ((window (get-buffer-window (current-buffer)))
+         (width (if window (window-text-width window t) 800))
+         (height (if window (window-text-height window t) 600))
+         (svg (svg-create width height))
+         (final-color (if (and opacity (< opacity 1.0))
+                         (let* ((default-bg (or (face-background 'default) "#ffffff"))
+                                (mixed-color (buffer-background--mix-colors color default-bg opacity)))
+                           mixed-color)
+                       color)))
+    (svg-rectangle svg 0 0 width height :fill final-color)
+    (svg-image svg :ascent 'center :width width :height height)))
 
 (defun buffer-background--process-spec (spec)
   "Process background SPEC into a display specification.
 SPEC is a plist with :image or :color and other properties."
   (cond
-   ;; Color background - return face spec
+   ;; Color background - create SVG background
    ((plist-get spec :color)
     (let ((color (plist-get spec :color))
           (opacity (plist-get spec :opacity)))
-      ;; For color backgrounds, we use face properties
-      ;; Opacity is applied by mixing with default background
-      (if (< opacity 1.0)
-          (let* ((default-bg (face-background 'default))
-                 (mixed-color (buffer-background--mix-colors color default-bg opacity)))
-            `(face (:background ,mixed-color)))
-        `(face (:background ,color)))))
+      (buffer-background--create-color-background color opacity)))
    
    ;; Image background
    ((plist-get spec :image)
@@ -420,47 +413,51 @@ Returns a processed image specification."
     (when grayscale
       (setq img-spec (plist-put img-spec :conversion 'laplace)))
     
-    ;; Apply opacity (using mask)
-    (when (and opacity (< opacity 1.0))
-      (setq img-spec (plist-put img-spec :mask 'heuristic)))
-    
     ;; Apply rotation
     (when (and rotation (not (zerop rotation)))
       (setq img-spec (plist-put img-spec :rotation rotation)))
     
-    ;; Apply scaling
+    ;; Apply scaling - always calculate dimensions for proper resizing
     (let ((dimensions (buffer-background--calculate-dimensions-with-spec spec)))
       (when dimensions
         (setq img-spec (plist-put img-spec :width (car dimensions)))
         (setq img-spec (plist-put img-spec :height (cdr dimensions)))))
     
-    ;; Note: Brightness and contrast adjustments would require image manipulation
-    ;; which is not directly supported by Emacs built-in image display.
-    ;; These could be implemented using external tools or ignored.
+    ;; Apply opacity by creating an alpha mask if needed
+    (when (and opacity (< opacity 1.0))
+      (setq img-spec (plist-put img-spec :mask 'heuristic))
+      ;; Create an SVG overlay with opacity if the image format supports it
+      (let* ((window (get-buffer-window (current-buffer)))
+             (width (if window (window-text-width window t) 800))
+             (height (if window (window-text-height window t) 600)))
+        (when (and width height)
+          ;; For complex opacity, we'll need to blend with SVG
+          (setq img-spec (plist-put img-spec :ascent 'center)))))
+    
+    ;; Ensure image always has proper ascent for background positioning
+    (setq img-spec (plist-put img-spec :ascent 'center))
     
     (cons (car image) img-spec)))
 
 (defun buffer-background--calculate-dimensions-with-spec (spec)
   "Calculate image dimensions based on buffer size and SPEC scaling mode."
   (let* ((window (get-buffer-window (current-buffer)))
-         (window-width (and window (window-text-width window t)))
-         (window-height (and window (window-text-height window t)))
+         (window-width (if window (window-text-width window t) 800))
+         (window-height (if window (window-text-height window t) 600))
          (scale (plist-get spec :scale))
          (margin (plist-get spec :margin)))
-    (when (and window-width window-height)
-      ;; Adjust for margins if specified
-      (when (and margin (> margin 0))
-        (setq window-width (- window-width (* 2 margin)))
-        (setq window-height (- window-height (* 2 margin))))
-      (pcase scale
-        ('fit
-         (cons window-width window-height))
-        ('fill
-         (cons window-width window-height))
-        ('tile
-         nil) ; No scaling for tiling
-        ('actual
-         nil))))) ; No scaling for actual size
+    ;; Adjust for margins if specified
+    (when (and margin (> margin 0))
+      (setq window-width (max 100 (- window-width (* 2 margin))))
+      (setq window-height (max 100 (- window-height (* 2 margin)))))
+    
+    ;; Always return dimensions for proper background sizing
+    (pcase scale
+      ('fit (cons window-width window-height))
+      ('fill (cons window-width window-height))
+      ('tile (cons window-width window-height)) ; Full size for tiling
+      ('actual nil) ; No scaling for actual size
+      (_ (cons window-width window-height))))) ; Default to fit
 
 ;;; Overlay Management
 
@@ -470,39 +467,31 @@ Returns a processed image specification."
     ;; Remove existing overlay
     (buffer-background--remove-overlay)
     
-    ;; Handle color backgrounds differently
-    (cond
-     ;; Color background - use face property
-     ((and (listp spec) (eq (car spec) 'face))
-      (let ((overlay (make-overlay (point-min) (point-max) nil nil t))
-            (face-spec (cadr spec)))
-        (overlay-put overlay 'buffer-background t)
-        (overlay-put overlay 'evaporate t)
-        (overlay-put overlay 'priority -1000) ; Very low priority
-        (overlay-put overlay 'face face-spec)
-        (setq buffer-background--overlay overlay)))
-     
-     ;; Image background - use line-prefix and wrap-prefix
-     (t
-      ;; For images, we'll use a different approach: set the background as a 
-      ;; text property on spaces throughout the buffer
-      (let ((inhibit-read-only t)
-            (modified (buffer-modified-p)))
-        ;; Create an overlay that covers the whole buffer
-        (let ((overlay (make-overlay (point-min) (point-max) nil nil t)))
-          (overlay-put overlay 'buffer-background t)
-          (overlay-put overlay 'evaporate t)
-          (overlay-put overlay 'priority -1000)
-          
-          ;; Set line-prefix for static background
-          (let* ((img-string (propertize " " 'display spec))
-                 (prefix-width (car (window-text-pixel-size nil (point-min) (point-min)))))
-            (overlay-put overlay 'line-prefix img-string)
-            (overlay-put overlay 'wrap-prefix img-string))
-          
-          (setq buffer-background--overlay overlay))
-        ;; Restore modified state
-        (set-buffer-modified-p modified))))))
+    ;; Create overlay covering entire visible buffer area
+    (let ((overlay (make-overlay (point-min) (point-max) nil nil t))
+          (inhibit-read-only t)
+          (modified (buffer-modified-p)))
+      (overlay-put overlay 'buffer-background t)
+      (overlay-put overlay 'evaporate t)
+      (overlay-put overlay 'priority -1000) ; Very low priority to stay behind text
+      
+      ;; Create background that properly fills the buffer window
+      (let* ((window (get-buffer-window (current-buffer)))
+             (lines-in-window (if window (window-text-height window) 40))
+             (background-lines (make-string (max 1 lines-in-window) ?\n))
+             (background-string (propertize background-lines 'display spec 'face '(:height 0.1))))
+        
+        ;; Use after-string to create a background that doesn't interfere with text
+        (overlay-put overlay 'after-string background-string)
+        
+        ;; Also use line-prefix for additional coverage
+        (let ((line-bg (propertize " " 'display spec 'face '(:height 0.1))))
+          (overlay-put overlay 'line-prefix line-bg)
+          (overlay-put overlay 'wrap-prefix line-bg)))
+      
+      (setq buffer-background--overlay overlay)
+      ;; Restore modified state
+      (set-buffer-modified-p modified)))))
 
 (defun buffer-background--create-tiled-string (image-string)
   "Create a tiled version of IMAGE-STRING to fill the buffer."
@@ -561,13 +550,15 @@ When enabled, displays an image as the background of the current buffer."
 
 (defun buffer-background--scroll-hook (window _display-start)
   "Hook function to maintain background position during scrolling."
-  ;; Keep the overlay at the beginning of buffer to maintain static position
+  ;; Keep the overlay covering the entire buffer for static background
   (when buffer-background--overlay
-    (move-overlay buffer-background--overlay (point-min) (point-min))))
+    (move-overlay buffer-background--overlay (point-min) (point-max))))
 
 (defun buffer-background--update-overlay ()
   "Update overlay when window configuration changes."
-  (when (and buffer-background-mode buffer-background--overlay)
+  (when (and buffer-background-mode buffer-background--current-spec)
+    ;; Clear cache to force recalculation with new dimensions
+    (buffer-background--clear-cache)
     (buffer-background--enable)))
 
 (defun buffer-background--update-overlay-hook (frame)
@@ -887,11 +878,23 @@ When enabled, displays an image as the background of the current buffer."
   :type 'hook
   :group 'buffer-background)
 
+;; Add window resize hook to update backgrounds
+(defun buffer-background--window-size-change-hook (frame)
+  "Update background overlays when window size changes."
+  (when (frame-live-p frame)
+    (dolist (window (window-list frame))
+      (with-current-buffer (window-buffer window)
+        (when (and buffer-background-mode buffer-background--overlay)
+          (run-with-idle-timer 0.1 nil #'buffer-background--update-overlay))))))
+
 ;; Add hooks to the enable/disable functions
 (advice-add 'buffer-background--enable :before 
             (lambda () (run-hooks 'buffer-background-before-enable-hook)))
 (advice-add 'buffer-background--enable :after 
             (lambda () (run-hooks 'buffer-background-after-enable-hook)))
+
+;; Global hook for window size changes
+(add-hook 'window-size-change-functions #'buffer-background--window-size-change-hook)
 
 ;;; Footer
 
