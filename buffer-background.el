@@ -302,21 +302,22 @@ CRITERIA can be a string, regexp, symbol, cons cell, or function."
 Returns a normalized plist specification or nil.
 BUFFER defaults to current buffer."
   (let ((buffer (or buffer (current-buffer)))
-        (spec nil)
-        (when buffer-background-color-alist
-          (cl-loop for (criteria . value) in buffer-background-color-alist
-                   when (buffer-background--match-criteria-p criteria buffer)
-                   do (setq spec (buffer-background--normalize-spec value))
-                   and return nil))
+        (spec nil))
+    (when buffer-background-color-alist
+      (cl-loop for (criteria . value) in buffer-background-color-alist
+               when (buffer-background--match-criteria-p criteria buffer)
+               do (setq spec (buffer-background--normalize-spec value))
+               and return nil))
 
-        ;; Fallback to global default if no match
-        (unless spec
-          (when buffer-background-color
-            (setq spec (buffer-background--normalize-spec buffer-background-color))))
+    ;; Fallback to global default if no match
+    (unless spec
+      (when buffer-background-color
+        (setq spec (buffer-background--normalize-spec buffer-background-color))))
 
-        ;; Apply global defaults to spec
-        (when spec
-          (buffer-background--apply-defaults spec)))))
+    ;; Apply global defaults to spec
+    (when spec
+      (buffer-background--apply-defaults spec))
+    spec)))
 
 (defun buffer-background--normalize-spec (spec)
   "Normalize SPEC into a plist format.
