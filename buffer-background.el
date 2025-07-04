@@ -317,7 +317,7 @@ BUFFER defaults to current buffer."
     ;; Apply global defaults to spec
     (when spec
       (buffer-background--apply-defaults spec))
-    spec)))
+    spec))
 
 (defun buffer-background--normalize-spec (spec)
   "Normalize SPEC into a plist format.
