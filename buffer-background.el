@@ -6,6 +6,8 @@
 ;; Keywords: buffer, background, faces
 ;; URL: https://github.com/theesfeld/buffer-background
 
+;; Copyright will be transferred to FSF if possible
+
 ;; Copyright (C) 2025 William Theesfeld
 
 ;; This program is free software: you can redistribute it and/or modify
