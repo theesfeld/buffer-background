@@ -1,12 +1,27 @@
 ;;; buffer-background.el --- Display colors as buffer backgrounds -*- lexical-binding: t -*-
 
-;; Copyright (C) 2025 Free Software Foundation, Inc.
-
-;; Author: TJ <tj@emacs.su>
+;; Author: William Theesfeld <tj@emacs.su>
 ;; Version: 2.1.0
 ;; Package-Requires: ((emacs "30.1"))
 ;; Keywords: buffer, background, faces
 ;; URL: https://github.com/theesfeld/buffer-background
+
+;; Copyright (C) 2025 William Theesfeld
+
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;;; Commentary:
 
@@ -41,6 +56,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'face-remap)
 
 ;;; Customizations
 
@@ -202,21 +218,21 @@ CRITERIA can be a string, regexp, symbol, cons cell, or function."
 Returns a normalized plist specification or nil.
 BUFFER defaults to current buffer."
   (let ((buffer (or buffer (current-buffer)))
-        (spec nil)
-        (when buffer-background-color-alist
-          (cl-loop for (criteria . value) in buffer-background-color-alist
-                   when (buffer-background--match-criteria-p criteria buffer)
-                   do (setq spec (buffer-background--normalize-spec value))
-                   and return nil))
+        (spec nil))
+    (when buffer-background-color-alist
+      (cl-loop for (criteria . value) in buffer-background-color-alist
+               when (buffer-background--match-criteria-p criteria buffer)
+               do (setq spec (buffer-background--normalize-spec value))
+               and return nil))
 
-        ;; Fallback to global default if no match
-        (unless spec
-          (when buffer-background-color
-            (setq spec (buffer-background--normalize-spec buffer-background-color))))
+    ;; Fallback to global default if no match
+    (unless spec
+      (when buffer-background-color
+        (setq spec (buffer-background--normalize-spec buffer-background-color))))
 
-        ;; Apply global defaults to spec
-        (when spec
-          (buffer-background--apply-defaults spec)))))
+    ;; Apply global defaults to spec
+    (when spec
+      (buffer-background--apply-defaults spec))))
 
 (defun buffer-background--normalize-spec (spec)
   "Normalize SPEC into a plist format.
@@ -284,11 +300,13 @@ When enabled, displays a color as the background of the current buffer."
   "Enable buffer background in current buffer."
   ;; Check if already enabled to prevent looping
   (unless buffer-background--face-cookie
+    (run-hooks 'buffer-background-before-enable-hook)
     (when-let ((spec (buffer-background--find-spec-for-buffer)))
       (buffer-background--process-spec spec)
       ;; Store the spec for later
       (setq-local buffer-background--current-spec spec)
-      (message "Background enabled!"))))
+      (message "Background enabled!"))
+    (run-hooks 'buffer-background-after-enable-hook)))
 
 (defun buffer-background--disable ()
   "Disable buffer background in current buffer."
@@ -442,12 +460,6 @@ When enabled, displays a color as the background of the current buffer."
   "Hook run after enabling buffer background in a buffer."
   :type 'hook
   :group 'buffer-background)
-
-;; Add hooks to the enable/disable functions
-(advice-add 'buffer-background--enable :before
-            (lambda () (run-hooks 'buffer-background-before-enable-hook)))
-(advice-add 'buffer-background--enable :after
-            (lambda () (run-hooks 'buffer-background-after-enable-hook)))
 
 ;;; Footer
 
