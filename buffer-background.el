@@ -60,6 +60,8 @@
 (require 'cl-lib)
 (require 'face-remap)
 
+(declare-function face-remap-remove-relative "face-remap" (cookie))
+
 ;;; Customizations
 
 (defgroup buffer-background nil
