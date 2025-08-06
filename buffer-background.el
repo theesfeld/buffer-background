@@ -267,11 +267,15 @@ SPEC can be a string (color), or a plist."
 
   (let* ((default-bg (or (face-background 'default) "#ffffff"))
          (final-color (if (and opacity (< opacity 1.0))
-                         (buffer-background--mix-colors color default-bg opacity)
-                       color)))
+                          (buffer-background--mix-colors color default-bg opacity)
+                        color)))
     ;; Use face remapping to change the default background
     (setq buffer-background--face-cookie
-          (face-remap-add-relative 'default :background final-color))))
+          (face-remap-add-relative 'default :background final-color))
+    ;; Set margins (and optional: fringe) background too
+    (face-remap-add-relative 'fringe :background final-color)
+    (face-remap-add-relative 'left-margin :background final-color)
+    (face-remap-add-relative 'right-margin :background final-color)))
 
 (defun buffer-background--process-spec (spec)
   "Process background SPEC and apply it to the current buffer.
