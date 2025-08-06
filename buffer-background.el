@@ -192,8 +192,19 @@ CRITERIA can be a string, regexp, symbol, cons cell, or function."
         (string-match-p criteria (buffer-name buffer))
       (string-equal criteria (buffer-name buffer))))
 
+   ;; Function predicate: check this before symbol/major-mode
+   ((functionp criteria)
+    (with-current-buffer buffer
+      (funcall criteria buffer)))
+   
+   ;; Symbol: could be a function or major-mode
    ((symbolp criteria)
-    (eq criteria (buffer-local-value 'major-mode buffer)))
+    (if (fboundp criteria)
+        ;; It's a function symbol
+        (with-current-buffer buffer
+          (funcall criteria buffer))
+      ;; It's a major mode
+      (eq criteria (buffer-local-value 'major-mode buffer))))
 
    ((consp criteria)
     (pcase (car criteria)
@@ -209,9 +220,6 @@ CRITERIA can be a string, regexp, symbol, cons cell, or function."
                     (string-equal (file-name-extension file)
                                   (cdr criteria)))))
       (_ nil)))
-   ((functionp criteria)
-    (with-current-buffer buffer
-      (funcall criteria buffer)))
 
    (t nil)))
 
